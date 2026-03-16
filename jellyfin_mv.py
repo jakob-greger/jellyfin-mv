@@ -151,7 +151,12 @@ if __name__ == "__main__":
         if cached_title:
             video_file.title = cached_title
         else:
-            cached_title = video_file.title = video_file.query_title(dest_folder)
+            if not video_file.is_extra and not video_file.is_series:
+                title_ext = video_file.path.split("/")[-1]
+                idx = title_ext.rfind(".")
+                cached_title = video_file.title = title_ext[:idx]
+            else:
+                cached_title = video_file.title = video_file.query_title(dest_folder)
 
         # print info
         if is_verbose:
