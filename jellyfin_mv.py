@@ -90,7 +90,7 @@ class MediaFile:
         copied = 0
         chunk_size = 2**20  # 1MiB
         bar_width = 30
-        move_copy = "moving" if copy_source else "copying"
+        move_copy = "copying" if copy_source else "moving"
         print_info(
             f'{move_copy}\t{Fore.MAGENTA}"{self.path}"{Fore.RESET}\n\tto\t{Fore.MAGENTA}"{dst_file}"{Fore.RESET}'
         )
@@ -130,7 +130,7 @@ class MediaFile:
         shutil.copystat(src_file, dst_file)
 
         # remove src file if successfull
-        if not copy_source:
+        if copy_source:
             print()
             return
         if filecmp.cmp(src_file, dst_file, shallow=False):
@@ -187,8 +187,8 @@ def print_usage_and_die():
 
 
 def parse_cmd_line_for_key(key):
-    if key in sys.argv:
-        sys.argv.remove(key)
+    if "-" + key in sys.argv:
+        sys.argv.remove("-" + key)
         return True
     return False
 
@@ -210,8 +210,8 @@ if __name__ == "__main__":
     # Parse arguments
     if len(sys.argv) <= 1:
         print_usage_and_die()
-    is_verbose = parse_cmd_line_for_key("-v")
-    copy_source = parse_cmd_line_for_key("-c")
+    is_verbose = parse_cmd_line_for_key("v")
+    copy_source = parse_cmd_line_for_key("c")
     files = sys.argv[1:]
     total_files = len(files)
 
