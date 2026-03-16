@@ -125,9 +125,17 @@ def parse_file_name(file_name):
 
     return res
 
-def print_usage():
+def print_usage_and_die():
     """Prints correct usage of program"""
     print(f"[USAGE]: {sys.argv[0]} [files]")
+    sys.exit(1)
+
+def parse_cmd_line_for_key(key):
+    """Parses commandline arguments for a given key"""
+    if key in sys.argv:
+        sys.argv.remove(key)
+        return True
+    return False
 
 # -------------------------------------------------------------------------- #
 
@@ -135,9 +143,10 @@ if __name__ == "__main__":
     cached_title = ""
 
     # Parse arguments
+    if len(sys.argv) <= 1:
+        print_usage_and_die()
+    IS_VERBOSE = parse_cmd_line_for_key("-v")
     files = sys.argv[1:]
-    if len(files) == 0:
-        print_usage()
 
     # get destination folders
     movie_folder = os.environ.get("JELLYFIN_MOVIE_FOLDER")
@@ -153,4 +162,5 @@ if __name__ == "__main__":
             cached_title = video_file.query_title(dest_folder)
 
         #TODO: implement file handling
-        video_file.print_information()
+        if IS_VERBOSE:
+            video_file.print_information()
