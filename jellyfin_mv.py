@@ -147,7 +147,7 @@ if __name__ == "__main__":
             sys.exit(1)
         video_file.target = dest_folder
 
-        # cache title for all following files
+        # extract title and cache for all following files
         if cached_title:
             video_file.title = cached_title
         else:
