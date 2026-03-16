@@ -67,6 +67,9 @@ class VideoFile:
             capture_output=True,
             check=False
         )
+        if res.returncode == 130:
+            print("[ERROR]: fzf: Please select a destination directory")
+            sys.exit(1)
         self.title = res.stdout.strip()
 
         return res.stdout.strip()
