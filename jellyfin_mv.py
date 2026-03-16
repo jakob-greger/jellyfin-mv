@@ -24,11 +24,6 @@ class MediaFile:
         self.target = ""
 
     def query_title(self, folder):
-        # check if destination folder is set
-        if not folder:
-            print("[ERROR]: No destination folder set!")
-            sys.exit(1)
-
         # read tmp file containing the last selected series/movie
         last_movie = ""
         last_series = ""
@@ -39,10 +34,10 @@ class MediaFile:
 
         # Query movie/series inside destination folder using the last selected as default
         t = "Series" if self.is_series else "Movie"
-        res = subprocess.run(
+        fzf = subprocess.run(
             f"""
                 fd -t d -d 1 \
-                | fzf --prompt='Choose {t} folder ' --height=40% --query='{last_selected}'
+                        | fzf --prompt='Choose {t} folder or type a new one: ' --height=40% --query='{last_selected}' --print-query
             """,
             cwd=folder,
             text=True,
@@ -50,21 +45,30 @@ class MediaFile:
             capture_output=True,
             check=False
         )
-        if res.returncode == 130:
+        if fzf.returncode == 130:
+            selected_title = fzf.stdout.strip().replace("/", "")
             print("[ERROR]: fzf: Please select a destination directory")
             sys.exit(1)
-        self.title = res.stdout.strip()
-        self.target = folder + self.title
 
         # write back to file
+        selected_title = fzf.stdout.strip().replace("/", "").split("\n")[-1]
+        if not selected_title:
+            print("[ERROR]: No title selected")
+            sys.exit(1)
         with open(CACHE_FILE, "w", encoding="ASCII") as f:
             if self.is_series:
-                f.write(f"last_movie={last_movie}\nlast_series={self.title}")
+                f.write(f"last_movie={last_movie}\nlast_series={selected_title}")
             else:
-                f.write(f"last_movie={self.title}\nlast_series={last_series}")
+                f.write(f"last_movie={selected_title}\nlast_series={last_series}")
+
+        return selected_title
 
     def move(self):
-        print(self.target)
+        # create target folder if necessary
+        if self.title not in os.listdir(self.target):
+            dest = f"{self.target}/{self.title}"
+            print(f"[INFO]: creating folder {dest}")
+            os.mkdir(dest)
 
     def print_information(self):
         print(f"[INFO]: Fileinformation for \"{self.file_name}\"")
@@ -137,13 +141,18 @@ if __name__ == "__main__":
     for file in files:
         video_file = parse_file_name(file)
 
+        # check destination folder
+        dest_folder = series_folder if video_file.is_series else movie_folder
+        if not dest_folder:
+            print("[Error]: No destination folder set")
+            sys.exit(1)
+        video_file.target = dest_folder
+
         # cache title for all following files
         if cached_title:
             video_file.title = cached_title
         else:
-            dest_folder = series_folder if video_file.is_series else movie_folder
-            video_file.query_title(dest_folder)
-            cached_title = video_file.title
+            cached_title = video_file.title = video_file.query_title(dest_folder)
 
         # print info
         if is_verbose:
