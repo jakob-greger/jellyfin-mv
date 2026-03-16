@@ -10,19 +10,9 @@ import subprocess
 
 CACHE_FILE = "/tmp/jf-mv_last-selected.txt"
 
-class VideoFile:
-    """
-    Represents a VideoFile with certain properties
+is_verbose = False
 
-    Attributes:
-        file_name (str): File-basename
-        is_series (bool): whether the file is a series or a movie
-        is_extra (bool): whether the file is an extra
-        season (int): the seasonnumber
-        episode (int): the episode number
-        title (str): the title of the series/movie as found in the destination folder
-    """
-
+class MediaFile:
     def __init__(self, file_name=""):
         self.file_name = file_name
         self.is_series = False
@@ -30,17 +20,10 @@ class VideoFile:
         self.season = -1
         self.episode = -1
         self.title = ""
+        self.path = ""
+        self.target = ""
 
     def query_title(self, folder):
-        """
-        Queries the title of the movie/series that already exists in the given folder
-
-        Args:
-            folder (str): folder where to search
-
-        Returns:
-            str: Folder basename
-        """
         # check if destination folder is set
         if not folder:
             print("[ERROR]: No destination folder set!")
@@ -71,6 +54,7 @@ class VideoFile:
             print("[ERROR]: fzf: Please select a destination directory")
             sys.exit(1)
         self.title = res.stdout.strip()
+        self.target = folder + self.title
 
         # write back to file
         with open(CACHE_FILE, "w", encoding="ASCII") as f:
@@ -79,8 +63,10 @@ class VideoFile:
             else:
                 f.write(f"last_movie={self.title}\nlast_series={last_series}")
 
+    def move(self):
+        print(self.target)
+
     def print_information(self):
-        """Prints all the relevant information of this instance"""
         print(f"[INFO]: Fileinformation for \"{self.file_name}\"")
         print(f"\t- Title: {self.title}")
         if self.is_extra:
@@ -96,16 +82,8 @@ class VideoFile:
 
 
 def parse_file_name(file_name):
-    """
-    Parses given file_name for is_series
-
-    Args:
-        file_name (int): the name of the file
-
-    Returns:
-        VideoFile: The File object containint the set attributes
-    """
-    res = VideoFile(file_name)
+    res = MediaFile(file_name)
+    res.path = file_name
     base_name = re.split("/", file_name)[-1]
 
     # is extra
@@ -131,12 +109,10 @@ def parse_file_name(file_name):
     return res
 
 def print_usage_and_die():
-    """Prints correct usage of program"""
     print(f"[USAGE]: {sys.argv[0]} [files]")
     sys.exit(1)
 
 def parse_cmd_line_for_key(key):
-    """Parses commandline arguments for a given key"""
     if key in sys.argv:
         sys.argv.remove(key)
         return True
@@ -150,7 +126,7 @@ if __name__ == "__main__":
     # Parse arguments
     if len(sys.argv) <= 1:
         print_usage_and_die()
-    IS_VERBOSE = parse_cmd_line_for_key("-v")
+    is_verbose = parse_cmd_line_for_key("-v")
     files = sys.argv[1:]
 
     # get destination folders
@@ -169,6 +145,9 @@ if __name__ == "__main__":
             video_file.query_title(dest_folder)
             cached_title = video_file.title
 
-        #TODO: implement file handling
-        if IS_VERBOSE:
+        # print info
+        if is_verbose:
             video_file.print_information()
+
+        # move to destination folder
+        video_file.move()
