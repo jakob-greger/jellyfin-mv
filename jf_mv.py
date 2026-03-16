@@ -49,9 +49,9 @@ class VideoFile:
         # read tmp file containing the last selected series/movie
         last_movie = ""
         last_series = ""
-        with open(CACHE_FILE, "w+", encoding="ASCII") as file:
-            last_movie = file.readline().strip()
-            last_series = file.readline().strip()
+        with open(CACHE_FILE, "w+", encoding="ASCII") as f:
+            last_movie = f.readline().strip()
+            last_series = f.readline().strip()
         last_selected = last_series if self.is_series else last_movie
 
         # Query movie/series inside destination folder using the last selected as default
@@ -129,8 +129,9 @@ def print_usage():
     """Prints correct usage of program"""
     print(f"[USAGE]: {sys.argv[0]} [files]")
 
-def main():
-    """main function"""
+# -------------------------------------------------------------------------- #
+
+if __name__ == "__main__":
     cached_title = ""
 
     # Parse arguments
@@ -148,11 +149,8 @@ def main():
 
         # cache title for all following files
         if not cached_title:
-            folder = series_folder if video_file.is_series else movie_folder
-            cached_title = video_file.query_title(folder)
+            dest_folder = series_folder if video_file.is_series else movie_folder
+            cached_title = video_file.query_title(dest_folder)
 
         #TODO: implement file handling
         video_file.print_information()
-
-if __name__ == "__main__":
-    main()
