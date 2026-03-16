@@ -49,9 +49,9 @@ class VideoFile:
         # read tmp file containing the last selected series/movie
         last_movie = ""
         last_series = ""
-        with open(CACHE_FILE, "w+", encoding="ASCII") as f:
-            last_movie = f.readline().strip()
-            last_series = f.readline().strip()
+        with open(CACHE_FILE, "r", encoding="ASCII") as f:
+            last_movie = f.readline().strip().split("last_movie=")[-1]
+            last_series = f.readline().strip().split("last_series=")[-1]
         last_selected = last_series if self.is_series else last_movie
 
         # Query movie/series inside destination folder using the last selected as default
@@ -72,7 +72,12 @@ class VideoFile:
             sys.exit(1)
         self.title = res.stdout.strip()
 
-        return res.stdout.strip()
+        # write back to file
+        with open(CACHE_FILE, "w", encoding="ASCII") as f:
+            if self.is_series:
+                f.write(f"last_movie={last_movie}\nlast_series={self.title}")
+            else:
+                f.write(f"last_movie={self.title}\nlast_series={last_series}")
 
     def print_information(self):
         """Prints all the relevant information of this instance"""
@@ -157,9 +162,12 @@ if __name__ == "__main__":
         video_file = parse_file_name(file)
 
         # cache title for all following files
-        if not cached_title:
+        if cached_title:
+            video_file.title = cached_title
+        else:
             dest_folder = series_folder if video_file.is_series else movie_folder
-            cached_title = video_file.query_title(dest_folder)
+            video_file.query_title(dest_folder)
+            cached_title = video_file.title
 
         #TODO: implement file handling
         if IS_VERBOSE:
