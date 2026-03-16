@@ -46,7 +46,6 @@ class MediaFile:
             check=False
         )
         if fzf.returncode == 130:
-            selected_title = fzf.stdout.strip().replace("/", "")
             print("[ERROR]: fzf: Please select a destination directory")
             sys.exit(1)
 
