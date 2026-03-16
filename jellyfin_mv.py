@@ -4,17 +4,22 @@ accordance with Jellyfin Folder Structure Conventions.
 """
 
 import os
-import sys
 import re
+import shutil
 import subprocess
+import sys
+
+from colorama import Fore
 
 CACHE_FILE = "/tmp/jf-mv_last-selected.txt"
 
 is_verbose = False
 
+
 class MediaFile:
-    def __init__(self, file_name=""):
+    def __init__(self, file_name):
         self.file_name = file_name
+        self.basename = file_name.split("/")[-1]
         self.is_series = False
         self.is_extra = False
         self.season = -1
@@ -37,23 +42,21 @@ class MediaFile:
         fzf = subprocess.run(
             f"""
                 fd -t d -d 1 \
-                        | fzf --prompt='Choose {t} folder or type a new one: ' --height=40% --query='{last_selected}' --print-query
+                | fzf --prompt='Choose {t} folder or type a new one: ' --height=40% --query='{last_selected}' --print-query
             """,
             cwd=folder,
             text=True,
             shell=True,
             capture_output=True,
-            check=False
+            check=False,
         )
         if fzf.returncode == 130:
-            print("[ERROR]: fzf: Please select a destination directory")
-            sys.exit(1)
+            print_error_and_die("fzf: Please select a destination folder")
 
         # write back to file
         selected_title = fzf.stdout.strip().replace("/", "").split("\n")[-1]
         if not selected_title:
-            print("[ERROR]: No title selected")
-            sys.exit(1)
+            print_error_and_die("No title selected")
         with open(CACHE_FILE, "w", encoding="ASCII") as f:
             if self.is_series:
                 f.write(f"last_movie={last_movie}\nlast_series={selected_title}")
@@ -64,13 +67,50 @@ class MediaFile:
 
     def move(self):
         # create target folder if necessary
+        dest = f"{self.target}/{self.title}"
         if self.title not in os.listdir(self.target):
-            dest = f"{self.target}/{self.title}"
-            print(f"[INFO]: creating folder {dest}")
+            print_info(f"creating folder {dest}")
             os.mkdir(dest)
 
+        # copy file to target
+        src_file = self.path
+        dst_file = f"{dest}/{os.path.basename(self.path)}"
+        src_size = os.path.getsize(src_file)
+        copied = 0
+        chunk_size = 2**20  # 1MiB
+        bar_width = 30
+        print_info(
+            f'moving {Fore.MAGENTA}"{self.basename}"{Fore.RESET} to {Fore.MAGENTA}"{dst_file}"{Fore.RESET}'
+        )
+        with open(src_file, "rb") as src, open(dst_file, "wb") as dst:
+            while True:
+                stop = False
+                chunk = src.read(chunk_size)
+                if not chunk:
+                    stop = True
+                dst.write(chunk)
+                copied += len(chunk)
+
+                if src_size > 0:
+                    progress = copied / src_size
+                    filled = int(progress * bar_width)
+                    bar = "-" * filled + " " * (bar_width - filled)
+                    line = f"[{bar}] {progress * 100:6.2f}%"
+                    color = Fore.GREEN if stop else Fore.RESET
+                    print(f"\t{color}{line}", end="\r", flush=True)
+
+                if stop:
+                    break
+        shutil.copystat(src_file, dst_file)
+        shutil.move
+        print()
+        if os.path.getsize(dst_file) == src_size:
+            os.remove(src_file)
+        else:
+            print_error_and_die("Destination file has a different size than the source file. Keeping source file.")
+
     def print_information(self):
-        print(f"[INFO]: Fileinformation for \"{self.file_name}\"")
+        print_info('Fileinformation for "{}"'.format(self.file_name.split("/")[-1]))
         print(f"\t- Title: {self.title}")
         if self.is_extra:
             if self.is_series:
@@ -111,15 +151,26 @@ def parse_file_name(file_name):
 
     return res
 
+
 def print_usage_and_die():
-    print(f"[USAGE]: {sys.argv[0]} [files]")
-    sys.exit(1)
+    print_error_and_die(f"Usage: {sys.argv[0]} <file> ...")
+
 
 def parse_cmd_line_for_key(key):
     if key in sys.argv:
         sys.argv.remove(key)
         return True
     return False
+
+
+def print_info(msg, end="\n", flush=False):
+    print(f"{Fore.BLUE}[INFO]:{Fore.RESET} {msg}", end=end, flush=flush)
+
+
+def print_error_and_die(msg, end="\n", flush=False):
+    print(f"{Fore.RED}[ERROR]:{Fore.RESET} {msg}", end=end, flush=flush)
+    sys.exit(1)
+
 
 # -------------------------------------------------------------------------- #
 
