@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 This module provides functionality for moving Video Files to specified Destination folders in
 accordance with Jellyfin Folder Structure Conventions.
@@ -9,12 +11,16 @@ import shutil
 import subprocess
 import sys
 import filecmp
+import time
 
 from colorama import Fore
 
 CACHE_FILE = "/tmp/jf-mv_last-selected.txt"
 
 is_verbose = False
+copy_source = False
+total_files = -1
+current_file = -1
 
 
 class MediaFile:
@@ -69,9 +75,13 @@ class MediaFile:
     def move(self):
         # create target folder if necessary
         dest = f"{self.target}/{self.title}"
-        if self.title not in os.listdir(self.target):
-            print_info(f"creating folder {dest}")
-            os.mkdir(dest)
+        if self.is_series:
+            dest += f"/Season {self.season}"
+        if self.is_extra:
+            dest += "/extras"
+        if not os.path.isdir(dest):
+            print_info(f"creating folder {Fore.MAGENTA}\"{dest}\"")
+            os.makedirs(dest)
 
         # copy file to target
         src_file = self.path
@@ -80,9 +90,11 @@ class MediaFile:
         copied = 0
         chunk_size = 2**20  # 1MiB
         bar_width = 30
+        move_copy = "moving" if copy_source else "copying"
         print_info(
-            f'moving {Fore.MAGENTA}"{self.basename}"{Fore.RESET} to {Fore.MAGENTA}"{dst_file}"{Fore.RESET}'
+            f'{move_copy}\t{Fore.MAGENTA}"{self.path}"{Fore.RESET}\n\tto\t{Fore.MAGENTA}"{dst_file}"{Fore.RESET}'
         )
+        t0 = time.time()
         with open(src_file, "rb") as src, open(dst_file, "wb") as dst:
             while True:
                 stop = False
@@ -95,10 +107,21 @@ class MediaFile:
                 if src_size > 0:
                     progress = copied / src_size
                     filled = int(progress * bar_width)
-                    bar = "-" * filled + " " * (bar_width - filled)
-                    line = f"[{bar}] {progress * 100:6.2f}%"
+                    bar = "=" * filled + " " * (bar_width - filled)
+                    elapsed = max(time.time() - t0, 1e-9)
+                    speed_mib_s = (copied / 2**20) / elapsed
+
                     color = Fore.GREEN if stop else Fore.RESET
-                    print(f"\t{color}{line}", end="\r", flush=True)
+                    txt_total_files = f"{Fore.BLUE}[{current_file}/{total_files}]  " if total_files > 1 else ""
+                    line = (
+                        f"{txt_total_files}"
+                        f"{color}"
+                        f"[{bar}] {progress * 100:6.2f}%  "
+                        f"{Fore.RESET}"
+                        f"{(copied/2**20):.0f}/{(src_size/2**20):.0f}MiB  "
+                        f"{speed_mib_s:5.1f}MiB/s"
+                    )
+                    print(f"\t{line}", end="\r", flush=True)
                 else:
                     print_error_and_die(f"File \"{self.path}\" is empty")
 
@@ -107,6 +130,9 @@ class MediaFile:
         shutil.copystat(src_file, dst_file)
 
         # remove src file if successfull
+        if not copy_source:
+            print()
+            return
         if filecmp.cmp(src_file, dst_file, shallow=False):
             os.remove(src_file)
         else:
@@ -185,22 +211,26 @@ if __name__ == "__main__":
     if len(sys.argv) <= 1:
         print_usage_and_die()
     is_verbose = parse_cmd_line_for_key("-v")
+    copy_source = parse_cmd_line_for_key("-c")
     files = sys.argv[1:]
+    total_files = len(files)
 
     # get destination folders
     movie_folder = os.environ.get("JELLYFIN_MOVIE_FOLDER")
     series_folder = os.environ.get("JELLYFIN_SERIES_FOLDER")
 
     # Process files
-    for file in files:
+    for idx, file in enumerate(files):
+        current_file = idx + 1
+
         video_file = parse_file_name(file)
 
         # check destination folder
         dest_folder = series_folder if video_file.is_series else movie_folder
         if not dest_folder:
-            print("[Error]: No destination folder set")
-            sys.exit(1)
-        video_file.target = dest_folder
+            print_error_and_die("No destination folder set")
+        else:
+            video_file.target = dest_folder
 
         # extract title and cache for all following files
         if cached_title:
@@ -219,3 +249,8 @@ if __name__ == "__main__":
 
         # move to destination folder
         video_file.move()
+
+        #TODO:
+        # [ ] - cleanup trickplay
+        # [ ] - update time in .nfo
+        # [ ] - strip extras-...
