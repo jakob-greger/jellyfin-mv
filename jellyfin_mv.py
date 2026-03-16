@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import filecmp
 
 from colorama import Fore
 
@@ -104,12 +105,13 @@ class MediaFile:
                 if stop:
                     break
         shutil.copystat(src_file, dst_file)
-        shutil.move
-        print()
-        if os.path.getsize(dst_file) == src_size:
+
+        # remove src file if successfull
+        if filecmp.cmp(src_file, dst_file, shallow=False):
             os.remove(src_file)
         else:
-            print_error_and_die("Destination file has a different size than the source file. Keeping source file.")
+            print_error_and_die("Destination file and source file are different. Keeping source file.")
+        print()
 
     def print_information(self):
         print_info('Fileinformation for "{}"'.format(self.file_name.split("/")[-1]))
