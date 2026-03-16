@@ -98,6 +98,8 @@ class MediaFile:
                     line = f"[{bar}] {progress * 100:6.2f}%"
                     color = Fore.GREEN if stop else Fore.RESET
                     print(f"\t{color}{line}", end="\r", flush=True)
+                else:
+                    print_error_and_die(f"File \"{self.path}\" is empty")
 
                 if stop:
                     break
