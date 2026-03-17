@@ -85,7 +85,7 @@ class MediaFile:
 
         # strip "extras-..."
         if self.is_extra:
-            self.basename = re.sub("^extras-", "", self.basename)
+            self.basename = re.sub("^extras-", "", self.basename, flags=re.IGNORECASE)
             print(self.basename)
 
         # copy file to target
@@ -170,12 +170,12 @@ def parse_file_name(file_name):
     base_name = re.split("/", file_name)[-1]
 
     # is extra
-    if re.search(r"^extras-*", base_name):
+    if re.search(r"^extras-*", base_name, flags=re.IGNORECASE):
         res.is_extra = True
         base_name = re.split(r"-", base_name, maxsplit=1)[1]
 
     # is series extra
-    if res.is_extra and re.search(r"^s\d{2}", base_name):
+    if res.is_extra and re.search(r"^s\d{2}", base_name, flags=re.IGNORECASE):
         res.is_series = True
         txt = re.split("-", base_name, maxsplit=1)
         res.season = int(re.split(r"^s", txt[0], maxsplit=1, flags=re.IGNORECASE)[1])
