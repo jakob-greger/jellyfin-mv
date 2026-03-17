@@ -39,9 +39,10 @@ class MediaFile:
         # read tmp file containing the last selected series/movie
         last_movie = ""
         last_series = ""
-        with open(CACHE_FILE, "r", encoding="ASCII") as f:
-            last_movie = f.readline().strip().split("last_movie=")[-1]
-            last_series = f.readline().strip().split("last_series=")[-1]
+        if os.path.isfile(CACHE_FILE):
+            with open(CACHE_FILE, "r", encoding="ASCII") as f:
+                last_movie = f.readline().strip().split("last_movie=")[-1]
+                last_series = f.readline().strip().split("last_series=")[-1]
         last_selected = last_series if self.is_series else last_movie
 
         # Query movie/series inside destination folder using the last selected as default
