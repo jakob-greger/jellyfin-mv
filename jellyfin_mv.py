@@ -11,8 +11,8 @@ import re
 import shutil
 import subprocess
 import sys
-import textwrap
 import termios
+import textwrap
 import time
 
 from colorama import Fore
@@ -99,6 +99,9 @@ class MediaFile:
         return selected_title
 
     def move(self):
+        # TODO: handle Extended/Cinematic Cuts
+        # TODO: remove .ignore
+
         # create target folder if necessary
         dest = f"{self.target}/{self.title}"
         if self.is_series:
@@ -118,7 +121,8 @@ class MediaFile:
                 )
 
         # copy file to target
-        dst_file = f"{dest}/{self.basename}"
+        self.dest_file = os.path.join(dest, self.basename)
+        self.dest_dir = dest
         # dst_file_output = "$JELLYFIN_SERIES_FOLDER" if self.is_series else "$JELLYFIN_MOVIE_FOLDER"
         # dst_file_output += "/" + re.sub(f"^{os.path.abspath(self.target)}/", "", os.path.abspath(dst_file))
         src_size = os.path.getsize(self.path)
@@ -133,7 +137,7 @@ class MediaFile:
             continuation_tabs=2,
         )
         dst_display = wrap_with_tabs(
-            dst_file,
+            self.dest_file,
             width=max(20, term_width - 8),
             continuation_tabs=2,
         )
@@ -146,7 +150,7 @@ class MediaFile:
             old_stdin_attrs = set_stdin_echo(False)
         except termios.error:
             old_stdin_attrs = None
-        with open(self.path, "rb") as src, open(dst_file, "wb") as dst:
+        with open(self.path, "rb") as src, open(self.dest_file, "wb") as dst:
             try:
                 while True:
                     stop = False
@@ -166,8 +170,7 @@ class MediaFile:
                         spacing = 4
                         color = Fore.GREEN if stop else Fore.RESET
                         txt_total_files = (
-                            f"{Fore.BLUE}[{current_file}/{total_files}]"
-                            f"{" " * spacing}"
+                            f"{Fore.BLUE}[{current_file}/{total_files}] "
                             if total_files > 1
                             else ""
                         )
@@ -195,19 +198,32 @@ class MediaFile:
                     termios.tcsetattr(
                         sys.stdin.fileno(), termios.TCSADRAIN, old_stdin_attrs
                     )
-        shutil.copystat(self.path, dst_file)
+        shutil.copystat(self.path, self.dest_file)
 
         # remove src file if successfull
         if copy_source:
             print()
             return
-        if filecmp.cmp(self.path, dst_file, shallow=False):
+        if filecmp.cmp(self.path, self.dest_file, shallow=False):
             os.remove(self.path)
         else:
             print_error_and_die(
                 "Destination file and source file are different. Keeping source file."
             )
         print()
+
+    def cleanup_trickplay(self):
+        trickplay = os.path.splitext(self.dest_file)[0] + ".trickplay"
+        if os.path.isdir(trickplay):
+            print_info(f'removing {Fore.MAGENTA}"{trickplay}"{Fore.RESET}')
+            shutil.rmtree(trickplay)
+
+    def update_nfo(self):
+        # TODO: Check if multiple Cuts of Movie
+        nfo_file = os.path.splitext(self.dest_file)[0] + ".nfo" if self.is_series or self.is_extra else "movie.nfo"
+        if os.path.isfile(nfo_file):
+            # TODO: update <dateadded>
+            pass
 
     def print_information(self):
         print_info('Fileinformation for "{}"'.format(self.basename))
@@ -302,8 +318,8 @@ if __name__ == "__main__":
         else:
             video_file.target = dest_folder
 
-        # extract title and cache for all following files
-        if cached_title:
+        # extract title and cache for all following episodes or extras
+        if cached_title and (video_file.is_series or video_file.is_extra):
             video_file.title = cached_title
         else:
             if not video_file.is_extra and not video_file.is_series:
@@ -319,9 +335,5 @@ if __name__ == "__main__":
 
         # move to destination folder
         video_file.move()
-
-        # TODO:
-        # [ ] - cleanup trickplay
-        # [ ] - update time in .nfo
-        # [ ] - handle Extended/Cinematic Cuts
-        # [ ] -
+        video_file.update_nfo()
+        video_file.cleanup_trickplay()
