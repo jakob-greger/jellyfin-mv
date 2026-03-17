@@ -11,6 +11,8 @@ import re
 import shutil
 import subprocess
 import sys
+import textwrap
+import termios
 import time
 
 from colorama import Fore
@@ -21,6 +23,30 @@ is_verbose = False
 copy_source = False
 total_files = -1
 current_file = -1
+
+
+def wrap_with_tabs(text, width, continuation_tabs=2):
+    if len(text) <= width:
+        return text
+    wrapped = textwrap.wrap(
+        text, width=width, break_long_words=True, break_on_hyphens=False
+    )
+    return ("\n" + "\t" * continuation_tabs).join(wrapped)
+
+
+def set_stdin_echo(enabled):
+    if not sys.stdin.isatty():
+        return None
+
+    fd = sys.stdin.fileno()
+    attrs = termios.tcgetattr(fd)
+    new_attrs = attrs[:]
+    if enabled:
+        new_attrs[3] |= termios.ECHO
+    else:
+        new_attrs[3] &= ~termios.ECHO
+    termios.tcsetattr(fd, termios.TCSADRAIN, new_attrs)
+    return attrs
 
 
 class MediaFile:
@@ -87,55 +113,88 @@ class MediaFile:
         if self.is_extra:
             self.basename = re.sub("^extras-", "", self.basename, flags=re.IGNORECASE)
             if self.is_series:
-                self.basename = re.sub(r"^s\d+-", "", self.basename, flags=re.IGNORECASE)
+                self.basename = re.sub(
+                    r"^s\d+-", "", self.basename, flags=re.IGNORECASE
+                )
 
         # copy file to target
         dst_file = f"{dest}/{self.basename}"
+        # dst_file_output = "$JELLYFIN_SERIES_FOLDER" if self.is_series else "$JELLYFIN_MOVIE_FOLDER"
+        # dst_file_output += "/" + re.sub(f"^{os.path.abspath(self.target)}/", "", os.path.abspath(dst_file))
         src_size = os.path.getsize(self.path)
         copied = 0
         chunk_size = 2**20  # 1MiB
         bar_width = 30
         txt_move_or_copy = "copying" if copy_source else "moving"
+        term_width = shutil.get_terminal_size(fallback=(120, 24)).columns
+        src_display = wrap_with_tabs(
+            self.path,
+            width=max(20, term_width - len(txt_move_or_copy) - 8),
+            continuation_tabs=2,
+        )
+        dst_display = wrap_with_tabs(
+            dst_file,
+            width=max(20, term_width - 8),
+            continuation_tabs=2,
+        )
         print_info(
-            f'{txt_move_or_copy}\t{Fore.MAGENTA}"{self.path}"{Fore.RESET}\n\tto\t{Fore.MAGENTA}"{dst_file}"{Fore.RESET}'
+            f'{txt_move_or_copy}\t{Fore.MAGENTA}"{src_display}"{Fore.RESET}\n\tto\t{Fore.MAGENTA}"{dst_display}"{Fore.RESET}'
         )
         t0 = time.time()
+        old_stdin_attrs = None
+        try:
+            old_stdin_attrs = set_stdin_echo(False)
+        except termios.error:
+            old_stdin_attrs = None
         with open(self.path, "rb") as src, open(dst_file, "wb") as dst:
-            while True:
-                stop = False
-                chunk = src.read(chunk_size)
-                if not chunk:
-                    stop = True
-                dst.write(chunk)
-                copied += len(chunk)
+            try:
+                while True:
+                    stop = False
+                    chunk = src.read(chunk_size)
+                    if not chunk:
+                        stop = True
+                    dst.write(chunk)
+                    copied += len(chunk)
 
-                if src_size > 0:
-                    progress = copied / src_size
-                    filled = int(progress * bar_width)
-                    bar = "=" * filled + " " * (bar_width - filled)
-                    elapsed = max(time.time() - t0, 1e-9)
-                    speed_mib_s = (copied / 2**20) / elapsed
+                    if src_size > 0:
+                        progress = copied / src_size
+                        filled = int(progress * bar_width)
+                        bar = "=" * filled + " " * (bar_width - filled)
+                        elapsed = max(time.time() - t0, 1e-9)
+                        speed_mib_s = (copied / 2**20) / elapsed
 
-                    color = Fore.GREEN if stop else Fore.RESET
-                    txt_total_files = (
-                        f"{Fore.BLUE}[{current_file}/{total_files}]  "
-                        if total_files > 1
-                        else ""
+                        spacing = 4
+                        color = Fore.GREEN if stop else Fore.RESET
+                        txt_total_files = (
+                            f"{Fore.BLUE}[{current_file}/{total_files}]"
+                            f"{" " * spacing}"
+                            if total_files > 1
+                            else ""
+                        )
+                        line = (
+                            f"{txt_total_files}"
+                            f"{color}"
+                            f"[{bar}] {progress * 100:.2f}%"
+                            f"{" " * spacing}"
+                            f"{Fore.RESET}"
+                            f"{(copied/2**20):,.0f} / {(src_size/2**20):,.0f} MiB"
+                            f"{" " * spacing}"
+                            f"{speed_mib_s:5.1f} MiB/s"
+                        )
+                        print(f"\t{line}", end="\r", flush=True)
+                    else:
+                        print_error_and_die(f'File "{self.path}" is empty')
+
+                    if stop:
+                        break
+            except KeyboardInterrupt:
+                print()
+                print_error_and_die("Keyboard Interrupt")
+            finally:
+                if old_stdin_attrs is not None:
+                    termios.tcsetattr(
+                        sys.stdin.fileno(), termios.TCSADRAIN, old_stdin_attrs
                     )
-                    line = (
-                        f"{txt_total_files}"
-                        f"{color}"
-                        f"[{bar}] {progress * 100:6.2f}%  "
-                        f"{Fore.RESET}"
-                        f"{(copied/2**20):.0f}/{(src_size/2**20):.0f}MiB  "
-                        f"{speed_mib_s:5.1f}MiB/s"
-                    )
-                    print(f"\t{line}", end="\r", flush=True)
-                else:
-                    print_error_and_die(f'File "{self.path}" is empty')
-
-                if stop:
-                    break
         shutil.copystat(self.path, dst_file)
 
         # remove src file if successfull
@@ -264,4 +323,5 @@ if __name__ == "__main__":
         # TODO:
         # [ ] - cleanup trickplay
         # [ ] - update time in .nfo
-        # [ ] - strip extras-...
+        # [ ] - handle Extended/Cinematic Cuts
+        # [ ] -
