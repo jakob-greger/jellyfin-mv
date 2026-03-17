@@ -25,14 +25,13 @@ current_file = -1
 
 class MediaFile:
     def __init__(self, file_name):
-        self.file_name = file_name
-        self.basename = file_name.split("/")[-1]
+        self.path = file_name
+        self.basename = os.path.basename(file_name)
         self.is_series = False
         self.is_extra = False
         self.season = -1
         self.episode = -1
         self.title = ""
-        self.path = ""
         self.target = ""
 
     def query_title(self, folder):
@@ -40,7 +39,7 @@ class MediaFile:
         last_movie = ""
         last_series = ""
         if os.path.isfile(CACHE_FILE):
-            with open(CACHE_FILE, "r", encoding="ASCII") as f:
+            with open(CACHE_FILE, "r", encoding="UTF8") as f:
                 last_movie = f.readline().strip().split("last_movie=")[-1]
                 last_series = f.readline().strip().split("last_series=")[-1]
         last_selected = last_series if self.is_series else last_movie
@@ -65,7 +64,7 @@ class MediaFile:
         selected_title = fzf.stdout.strip().replace("/", "").split("\n")[-1]
         if not selected_title:
             print_error_and_die("No title selected")
-        with open(CACHE_FILE, "w", encoding="ASCII") as f:
+        with open(CACHE_FILE, "w", encoding="UTF8") as f:
             if self.is_series:
                 f.write(f"last_movie={last_movie}\nlast_series={selected_title}")
             else:
@@ -84,19 +83,23 @@ class MediaFile:
             print_info(f'creating folder {Fore.MAGENTA}"{dest}"')
             os.makedirs(dest)
 
+        # strip "extras-..."
+        if self.is_extra:
+            self.basename = re.sub("^extras-", "", self.basename)
+            print(self.basename)
+
         # copy file to target
-        src_file = self.path
-        dst_file = f"{dest}/{os.path.basename(self.path)}"
-        src_size = os.path.getsize(src_file)
+        dst_file = f"{dest}/{self.basename}"
+        src_size = os.path.getsize(self.path)
         copied = 0
         chunk_size = 2**20  # 1MiB
         bar_width = 30
-        move_copy = "copying" if copy_source else "moving"
+        txt_move_or_copy = "copying" if copy_source else "moving"
         print_info(
-            f'{move_copy}\t{Fore.MAGENTA}"{self.path}"{Fore.RESET}\n\tto\t{Fore.MAGENTA}"{dst_file}"{Fore.RESET}'
+            f'{txt_move_or_copy}\t{Fore.MAGENTA}"{self.path}"{Fore.RESET}\n\tto\t{Fore.MAGENTA}"{dst_file}"{Fore.RESET}'
         )
         t0 = time.time()
-        with open(src_file, "rb") as src, open(dst_file, "wb") as dst:
+        with open(self.path, "rb") as src, open(dst_file, "wb") as dst:
             while True:
                 stop = False
                 chunk = src.read(chunk_size)
@@ -132,14 +135,14 @@ class MediaFile:
 
                 if stop:
                     break
-        shutil.copystat(src_file, dst_file)
+        shutil.copystat(self.path, dst_file)
 
         # remove src file if successfull
         if copy_source:
             print()
             return
-        if filecmp.cmp(src_file, dst_file, shallow=False):
-            os.remove(src_file)
+        if filecmp.cmp(self.path, dst_file, shallow=False):
+            os.remove(self.path)
         else:
             print_error_and_die(
                 "Destination file and source file are different. Keeping source file."
@@ -147,7 +150,7 @@ class MediaFile:
         print()
 
     def print_information(self):
-        print_info('Fileinformation for "{}"'.format(self.file_name.split("/")[-1]))
+        print_info('Fileinformation for "{}"'.format(self.basename))
         print(f"\t- Title: {self.title}")
         if self.is_extra:
             if self.is_series:
