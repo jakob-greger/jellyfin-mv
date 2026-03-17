@@ -26,6 +26,7 @@ current_file = -1
 
 
 def wrap_with_tabs(text, width, continuation_tabs=2):
+    # FIXME: Doesnt always work exactly as intended
     if len(text) <= width:
         return text
     wrapped = textwrap.wrap(
@@ -231,6 +232,10 @@ class MediaFile:
             # TODO: update <dateadded>
             pass
 
+    def handle_special_cuts(self):
+        # TODO: handle Extended/Cinematic Cuts
+        pass
+
     def print_information(self):
         print_info('Fileinformation for "{}"'.format(self.basename))
         print(f"\t- Title: {self.title}")
@@ -335,7 +340,7 @@ if __name__ == "__main__":
             else:
                 cached_title = video_file.title = video_file.query_title(dest_folder)
 
-        # TODO: handle Extended/Cinematic Cuts
+        video_file.handle_special_cuts()
 
         # print info
         if is_verbose:
