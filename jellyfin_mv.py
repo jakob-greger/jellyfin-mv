@@ -86,7 +86,8 @@ class MediaFile:
         # strip "extras-..."
         if self.is_extra:
             self.basename = re.sub("^extras-", "", self.basename, flags=re.IGNORECASE)
-            print(self.basename)
+            if self.is_series:
+                self.basename = re.sub(r"^s\d+-", "", self.basename, flags=re.IGNORECASE)
 
         # copy file to target
         dst_file = f"{dest}/{self.basename}"
