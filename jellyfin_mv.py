@@ -99,15 +99,21 @@ class MediaFile:
         return selected_title
 
     def move(self):
-        # TODO: handle Extended/Cinematic Cuts
-        # TODO: remove .ignore
+        def rem_ignore(path):
+            file = os.path.join(path, ".ignore")
+            if os.path.isfile(file):
+                os.remove(file)
+                print_info(f'removed {Fore.MAGENTA}"{file}"')
 
         # create target folder if necessary
         dest = f"{self.target}/{self.title}"
+        rem_ignore(dest)
         if self.is_series:
             dest += f"/Season {self.season}"
+            rem_ignore(dest)
         if self.is_extra:
             dest += "/extras"
+            rem_ignore(dest)
         if not os.path.isdir(dest):
             print_info(f'creating folder {Fore.MAGENTA}"{dest}"')
             os.makedirs(dest)
@@ -328,6 +334,8 @@ if __name__ == "__main__":
                 cached_title = video_file.title = title_ext[:idx]
             else:
                 cached_title = video_file.title = video_file.query_title(dest_folder)
+
+        # TODO: handle Extended/Cinematic Cuts
 
         # print info
         if is_verbose:
