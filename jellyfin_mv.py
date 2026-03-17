@@ -27,6 +27,7 @@ current_file = -1
 
 def wrap_with_tabs(text, width, continuation_tabs=2):
     # FIXME: Doesnt always work exactly as intended
+    # TODO: Refactor to print_wrapped(text)
     if len(text) <= width:
         return text
     wrapped = textwrap.wrap(
@@ -130,8 +131,6 @@ class MediaFile:
         # copy file to target
         self.dest_file = os.path.join(dest, self.basename)
         self.dest_dir = dest
-        # dst_file_output = "$JELLYFIN_SERIES_FOLDER" if self.is_series else "$JELLYFIN_MOVIE_FOLDER"
-        # dst_file_output += "/" + re.sub(f"^{os.path.abspath(self.target)}/", "", os.path.abspath(dst_file))
         src_size = os.path.getsize(self.path)
         copied = 0
         chunk_size = 2**20  # 1MiB
@@ -154,6 +153,7 @@ class MediaFile:
         t0 = time.time()
         old_stdin_attrs = None
         try:
+            # disable stdin echo
             old_stdin_attrs = set_stdin_echo(False)
         except termios.error:
             old_stdin_attrs = None
@@ -161,57 +161,70 @@ class MediaFile:
             try:
                 while True:
                     stop = False
+
+                    # Check for empty files
+                    if src_size <= 0:
+                        print_error_and_die(f'File "{self.path}" is empty')
+
+                    # write chunk
                     chunk = src.read(chunk_size)
                     if not chunk:
                         stop = True
                     dst.write(chunk)
                     copied += len(chunk)
 
-                    if src_size > 0:
-                        progress = copied / src_size
-                        filled = int(progress * bar_width)
-                        bar = "=" * filled + " " * (bar_width - filled)
-                        elapsed = max(time.time() - t0, 1e-9)
-                        speed_mib_s = (copied / 2**20) / elapsed
+                    # progress bar
+                    progress = copied / src_size
+                    filled = int(progress * bar_width)
+                    bar = "=" * filled + " " * (bar_width - filled)
 
-                        spacing = 4
-                        color = Fore.GREEN if stop else Fore.RESET
-                        txt_total_files = (
-                            f"{Fore.BLUE}[{current_file}/{total_files}] "
-                            if total_files > 1
-                            else ""
-                        )
-                        line = (
-                            f"{txt_total_files}"
-                            f"{color}"
-                            f"[{bar}] {progress * 100:.2f}%"
-                            f"{" " * spacing}"
-                            f"{Fore.RESET}"
-                            f"{(copied/2**20):,.0f} / {(src_size/2**20):,.0f} MiB"
-                            f"{" " * spacing}"
-                            f"{speed_mib_s:5.1f} MiB/s"
-                        )
-                        print(f"\t{line}", end="\r", flush=True)
-                    else:
-                        print_error_and_die(f'File "{self.path}" is empty')
+                    # speed
+                    elapsed = max(time.time() - t0, 1e-9)
+                    speed_mib_s = (copied / 2**20) / elapsed
 
+                    # output styling
+                    spacing = 4
+                    color = Fore.GREEN if stop else Fore.RESET
+                    txt_total_files = (
+                        f"{Fore.BLUE}[{current_file}/{total_files}] "
+                        if total_files > 1
+                        else ""
+                    )
+                    line = (
+                        f"{txt_total_files}"
+                        f"{color}"
+                        f"[{bar}] {progress * 100:.2f}%"
+                        f"{" " * spacing}"
+                        f"{Fore.RESET}"
+                        f"{(copied/2**20):,.0f} / {(src_size/2**20):,.0f} MiB"
+                        f"{" " * spacing}"
+                        f"{speed_mib_s:5.1f} MiB/s"
+                    )
+                    print(f"\t{line}", end="\r", flush=True)
+
+                    # artificial do ... while to have the 100% shown in GREEN
                     if stop:
                         break
+
             except KeyboardInterrupt:
+                # catch keyboard Interrupts
                 print()
                 print_error_and_die("Keyboard Interrupt")
             finally:
+                # reset terminal attributes for stdin echo
                 if old_stdin_attrs is not None:
                     termios.tcsetattr(
                         sys.stdin.fileno(), termios.TCSADRAIN, old_stdin_attrs
                     )
+
+        # copy file metadata
         shutil.copystat(self.path, self.dest_file)
 
         # remove src file if successfull
         if copy_source:
             print()
             return
-        if filecmp.cmp(self.path, self.dest_file, shallow=False):
+        if filecmp.cmp(self.path, self.dest_file, shallow=False): # TODO: make shallow comparison a command line option
             os.remove(self.path)
         else:
             print_error_and_die(
@@ -220,14 +233,20 @@ class MediaFile:
         print()
 
     def cleanup_trickplay(self):
+        # TODO: make optional via cmd line
         trickplay = os.path.splitext(self.dest_file)[0] + ".trickplay"
         if os.path.isdir(trickplay):
             print_info(f'removing {Fore.MAGENTA}"{trickplay}"{Fore.RESET}')
             shutil.rmtree(trickplay)
 
     def update_nfo(self):
+        # TODO: make optional via cmd line
         # TODO: Check if multiple Cuts of Movie
-        nfo_file = os.path.splitext(self.dest_file)[0] + ".nfo" if self.is_series or self.is_extra else "movie.nfo"
+        nfo_file = (
+            os.path.splitext(self.dest_file)[0] + ".nfo"
+            if self.is_series or self.is_extra
+            else "movie.nfo"
+        )
         if os.path.isfile(nfo_file):
             # TODO: update <dateadded>
             pass
@@ -236,7 +255,7 @@ class MediaFile:
         # TODO: handle Extended/Cinematic Cuts
         pass
 
-    def print_information(self):
+    def print_metadata(self):
         print_info('Fileinformation for "{}"'.format(self.basename))
         print(f"\t- Title: {self.title}")
         if self.is_extra:
@@ -284,6 +303,8 @@ def print_usage_and_die():
 
 
 def parse_cmd_line_for_key(key):
+    # TODO: Improve parsing for e.g. -cv
+    # remove argument, and instead set variables here from a table of possible options
     if "-" + key in sys.argv:
         sys.argv.remove("-" + key)
         return True
@@ -340,11 +361,12 @@ if __name__ == "__main__":
             else:
                 cached_title = video_file.title = video_file.query_title(dest_folder)
 
+        # Extended Cut and Cinematic Cut should be in the same movie folder
         video_file.handle_special_cuts()
 
         # print info
         if is_verbose:
-            video_file.print_information()
+            video_file.print_metadata()
 
         # move to destination folder
         video_file.move()
