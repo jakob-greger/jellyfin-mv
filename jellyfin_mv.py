@@ -5,12 +5,12 @@ This module provides functionality for moving Video Files to specified Destinati
 accordance with Jellyfin Folder Structure Conventions.
 """
 
+import filecmp
 import os
 import re
 import shutil
 import subprocess
 import sys
-import filecmp
 import time
 
 from colorama import Fore
@@ -80,7 +80,7 @@ class MediaFile:
         if self.is_extra:
             dest += "/extras"
         if not os.path.isdir(dest):
-            print_info(f"creating folder {Fore.MAGENTA}\"{dest}\"")
+            print_info(f'creating folder {Fore.MAGENTA}"{dest}"')
             os.makedirs(dest)
 
         # copy file to target
@@ -112,7 +112,11 @@ class MediaFile:
                     speed_mib_s = (copied / 2**20) / elapsed
 
                     color = Fore.GREEN if stop else Fore.RESET
-                    txt_total_files = f"{Fore.BLUE}[{current_file}/{total_files}]  " if total_files > 1 else ""
+                    txt_total_files = (
+                        f"{Fore.BLUE}[{current_file}/{total_files}]  "
+                        if total_files > 1
+                        else ""
+                    )
                     line = (
                         f"{txt_total_files}"
                         f"{color}"
@@ -123,7 +127,7 @@ class MediaFile:
                     )
                     print(f"\t{line}", end="\r", flush=True)
                 else:
-                    print_error_and_die(f"File \"{self.path}\" is empty")
+                    print_error_and_die(f'File "{self.path}" is empty')
 
                 if stop:
                     break
@@ -136,7 +140,9 @@ class MediaFile:
         if filecmp.cmp(src_file, dst_file, shallow=False):
             os.remove(src_file)
         else:
-            print_error_and_die("Destination file and source file are different. Keeping source file.")
+            print_error_and_die(
+                "Destination file and source file are different. Keeping source file."
+            )
         print()
 
     def print_information(self):
@@ -250,7 +256,7 @@ if __name__ == "__main__":
         # move to destination folder
         video_file.move()
 
-        #TODO:
+        # TODO:
         # [ ] - cleanup trickplay
         # [ ] - update time in .nfo
         # [ ] - strip extras-...
