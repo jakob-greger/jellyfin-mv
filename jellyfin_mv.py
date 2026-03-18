@@ -21,6 +21,7 @@ CACHE_FILE = "/tmp/jf-mv_last-selected.txt"
 
 is_verbose = False
 copy_source = False
+check_shallow = False
 total_files = -1
 current_file = -1
 
@@ -86,12 +87,12 @@ class MediaFile:
             check=False,
         )
         if fzf.returncode == 130:
-            print_error_and_die("fzf: Please select a destination folder")
+            print_error("fzf: Please select a destination folder")
 
         # write back to file
         selected_title = fzf.stdout.strip().replace("/", "").split("\n")[-1]
         if not selected_title:
-            print_error_and_die("No title selected")
+            print_error("No title selected")
         with open(CACHE_FILE, "w", encoding="UTF8") as f:
             if self.is_series:
                 f.write(f"last_movie={last_movie}\nlast_series={selected_title}")
@@ -164,7 +165,7 @@ class MediaFile:
 
                     # Check for empty files
                     if src_size <= 0:
-                        print_error_and_die(f'File "{self.path}" is empty')
+                        print_error(f'File "{self.path}" is empty')
 
                     # write chunk
                     chunk = src.read(chunk_size)
@@ -209,7 +210,7 @@ class MediaFile:
             except KeyboardInterrupt:
                 # catch keyboard Interrupts
                 print()
-                print_error_and_die("Keyboard Interrupt")
+                print_error("Keyboard Interrupt")
             finally:
                 # reset terminal attributes for stdin echo
                 if old_stdin_attrs is not None:
@@ -221,16 +222,18 @@ class MediaFile:
         shutil.copystat(self.path, self.dest_file)
 
         # remove src file if successfull
-        if copy_source:
-            print()
-            return
-        if filecmp.cmp(self.path, self.dest_file, shallow=False): # TODO: make shallow comparison a command line option
-            os.remove(self.path)
+        sucess = True
+        if filecmp.cmp(self.path, self.dest_file, shallow=check_shallow):
+            if not copy_source:
+                os.remove(self.path)
         else:
-            print_error_and_die(
-                "Destination file and source file are different. Keeping source file."
+            print_error(
+                "Destination file and source file are different. Keeping source file and continuing with the next file",
+                die=False,
             )
+            sucess = False
         print()
+        return sucess
 
     def cleanup_trickplay(self):
         # TODO: make optional via cmd line
@@ -299,25 +302,33 @@ def parse_file_name(file_name):
 
 
 def print_usage_and_die():
-    print_error_and_die(f"Usage: {sys.argv[0]} <file> ...")
+    print_error(f"Usage: {sys.argv[0]} <file> ...")
 
 
-def parse_cmd_line_for_key(key):
-    # TODO: Improve parsing for e.g. -cv
-    # remove argument, and instead set variables here from a table of possible options
-    if "-" + key in sys.argv:
-        sys.argv.remove("-" + key)
-        return True
-    return False
+def parse_cmd_line_flags():
+    global is_verbose, copy_source, check_shallow
+    for arg in sys.argv:
+        if arg.startswith("-"):
+            flags = arg[1:]
+            for flag in flags:
+                match flag:
+                    case "v":
+                        is_verbose = True
+                    case "c":
+                        copy_source = True
+                    case "s":
+                        check_shallow = True
+            sys.argv.remove(arg)
 
 
 def print_info(msg, end="\n", flush=False):
     print(f"{Fore.BLUE}[INFO]:{Fore.RESET} {msg}", end=end, flush=flush)
 
 
-def print_error_and_die(msg, end="\n", flush=False):
+def print_error(msg, end="\n", flush=False, die=True):
     print(f"{Fore.RED}[ERROR]:{Fore.RESET} {msg}", end=end, flush=flush)
-    sys.exit(1)
+    if die:
+        sys.exit(1)
 
 
 # -------------------------------------------------------------------------- #
@@ -328,8 +339,7 @@ if __name__ == "__main__":
     # Parse arguments
     if len(sys.argv) <= 1:
         print_usage_and_die()
-    is_verbose = parse_cmd_line_for_key("v")
-    copy_source = parse_cmd_line_for_key("c")
+    parse_cmd_line_flags()
     files = sys.argv[1:]
     total_files = len(files)
 
@@ -346,7 +356,7 @@ if __name__ == "__main__":
         # check destination folder
         dest_folder = series_folder if video_file.is_series else movie_folder
         if not dest_folder:
-            print_error_and_die("No destination folder set")
+            print_error("No destination folder set")
         else:
             video_file.target = dest_folder
 
@@ -369,6 +379,7 @@ if __name__ == "__main__":
             video_file.print_metadata()
 
         # move to destination folder
-        video_file.move()
+        if not video_file.move():
+            continue
         video_file.update_nfo()
         video_file.cleanup_trickplay()
