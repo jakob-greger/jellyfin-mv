@@ -193,7 +193,7 @@ class MediaFile:
                     spacing = 4
                     color = Fore.GREEN if stop else Fore.RESET
                     txt_total_files = (
-                        f"{Fore.BLUE}[{current_file}/{total_files}] "
+                        f"{Fore.CYAN}[{current_file}/{total_files}] "
                         if total_files > 1
                         else ""
                     )
@@ -340,9 +340,27 @@ def parse_file_name(file_name):
     return res
 
 
-def print_usage_and_die():
-    # TODO: implement
-    print_error(f"Usage: {sys.argv[0]} <file> ...")
+def print_help():
+    print(
+        f"{Fore.YELLOW}Usage:{Fore.RESET}\t{Fore.MAGENTA}{sys.argv[0]}{Fore.RESET} [OPTION]... FILE..."
+    )
+    print(
+        f"\n{Fore.YELLOW}Desc:{Fore.RESET}"
+        "\tMove Video Files to specified Destination folders in accordance with Jellyfin Folder Structure Conventions.\n"
+        "\tSet the Destination Folders using "
+        f"{Fore.CYAN}$JELLYFIN_MOVIE_FOLDER{Fore.RESET} and "
+        f"{Fore.CYAN}$JELLYFIN_SERIES_FOLDER{Fore.RESET}.\n"
+    )
+    print(
+        f"{Fore.YELLOW}Options:{Fore.RESET}\n"
+        f"\t{Fore.CYAN}-h{Fore.RESET}\tview help\n"
+        f"\t{Fore.CYAN}-v{Fore.RESET}\tverbose\n"
+        f"\t{Fore.CYAN}-c{Fore.RESET}\tkeep source file\n"
+        f"\t{Fore.CYAN}-s{Fore.RESET}\tshallow file verification\n"
+        f"\t{Fore.CYAN}-t{Fore.RESET}\tkeep FILE.trickplay\n"
+        f"\t{Fore.CYAN}-d{Fore.RESET}\tpreserve <dateadded> in movie/episode metadata\n"
+    )
+    print(f"Full documentation available at: {Fore.MAGENTA}<https://github.com/jakob-greger/jellyfin-mv>{Fore.RESET}")
 
 
 def parse_cmd_line():
@@ -357,7 +375,9 @@ def parse_cmd_line():
             flags = arg[1:]
             for flag in flags:
                 match flag:
-                    # TODO: -h for help
+                    case "h":
+                        print_help()
+                        sys.exit(0)
                     case "v":
                         is_verbose = True
                     case "c":
@@ -368,8 +388,12 @@ def parse_cmd_line():
                         keep_trickplay = True
                     case "d":
                         preserve_dateadded = True
+                    case "-":
+                        continue
                     case _:
-                        print_warning(f"Unrecognized flag '-{flag}'. Ignoring...")
+                        print_error(f"Unrecognized flag '-{flag}'.", die=False)
+                        print_help()
+                        sys.exit(1)
         # append video to result
         else:
             res.append(arg)
@@ -377,7 +401,7 @@ def parse_cmd_line():
 
 
 def print_info(msg, end="\n", flush=False):
-    print(f"{Fore.BLUE}[INFO]:{Fore.RESET} {msg}", end=end, flush=flush)
+    print(f"{Fore.CYAN}[INFO]:{Fore.RESET} {msg}", end=end, flush=flush)
 
 
 def print_error(msg, end="\n", flush=False, die=True):
@@ -400,7 +424,8 @@ if __name__ == "__main__":
     total_files = len(files)
     if total_files <= 0:
         print_error("No files provided", die=False)
-        print_usage_and_die()
+        print_help()
+        sys.exit(1)
 
     # get destination folders
     movie_folder = os.environ.get("JELLYFIN_MOVIE_FOLDER")
