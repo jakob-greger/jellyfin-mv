@@ -14,15 +14,19 @@ import sys
 import termios
 import textwrap
 import time
-
 from threading import Thread
+
 from colorama import Fore
 
 CACHE_FILE = "/tmp/jf-mv_last-selected.txt"
 
+# cmd line flags
 is_verbose = False
 copy_source = False
 check_shallow = False
+keep_trickplay = False
+preserve_dateadded = False
+
 total_files = -1
 current_file = -1
 
@@ -131,10 +135,15 @@ class MediaFile:
                     r"^s\d+-", "", self.basename, flags=re.IGNORECASE
                 )
 
-        # copy file to target
+        # Check for empty files
         self.dest_file = os.path.join(dest, self.basename)
         self.dest_dir = dest
         src_size = os.path.getsize(self.path)
+        if src_size <= 0:
+            print_warning(f'File "{self.path}" is empty. Skipping...')
+            return 1
+
+        # copy file to target
         copied = 0
         chunk_size = 2**20  # 1MiB
         bar_width = 30
@@ -163,10 +172,6 @@ class MediaFile:
             try:
                 while True:
                     stop = False
-
-                    # Check for empty files
-                    if src_size <= 0:
-                        print_error(f'File "{self.path}" is empty')
 
                     # write chunk
                     chunk = src.read(chunk_size)
@@ -224,6 +229,7 @@ class MediaFile:
 
         # remove src file if successfull
         sucess = True
+
         def check_files():
             nonlocal sucess
             sucess = filecmp.cmp(self.path, self.dest_file, shallow=False)
@@ -261,17 +267,22 @@ class MediaFile:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_stdin_attrs)
                     termios.tcflush(fd, termios.TCIFLUSH)
 
-        return sucess
+        if sucess:
+            return 0
+        else:
+            return -1
 
     def cleanup_trickplay(self):
-        # TODO: make optional via cmd line
+        if keep_trickplay:
+            return
         trickplay = os.path.splitext(self.dest_file)[0] + ".trickplay"
         if os.path.isdir(trickplay):
             print_info(f'removing {Fore.MAGENTA}"{trickplay}"{Fore.RESET}')
             shutil.rmtree(trickplay)
 
     def update_nfo(self):
-        # TODO: make optional via cmd line
+        if preserve_dateadded:
+            return
         # TODO: Check if multiple Cuts of Movie
         nfo_file = (
             os.path.splitext(self.dest_file)[0] + ".nfo"
@@ -330,23 +341,39 @@ def parse_file_name(file_name):
 
 
 def print_usage_and_die():
+    # TODO: implement
     print_error(f"Usage: {sys.argv[0]} <file> ...")
 
 
-def parse_cmd_line_flags():
-    global is_verbose, copy_source, check_shallow
+def parse_cmd_line():
+    global is_verbose, copy_source, check_shallow, keep_trickplay, preserve_dateadded
+    res = []
     for arg in sys.argv:
+        # ignore program name
+        if arg == sys.argv[0]:
+            continue
+        # parse flags
         if arg.startswith("-"):
             flags = arg[1:]
             for flag in flags:
                 match flag:
+                    # TODO: -h for help
                     case "v":
                         is_verbose = True
                     case "c":
                         copy_source = True
                     case "s":
                         check_shallow = True
-            sys.argv.remove(arg)
+                    case "t":
+                        keep_trickplay = True
+                    case "d":
+                        preserve_dateadded = True
+                    case _:
+                        print_warning(f"Unrecognized flag '-{flag}'. Ignoring...")
+        # append video to result
+        else:
+            res.append(arg)
+    return res
 
 
 def print_info(msg, end="\n", flush=False):
@@ -359,17 +386,21 @@ def print_error(msg, end="\n", flush=False, die=True):
         sys.exit(1)
 
 
+def print_warning(msg, end="\n", flush=False):
+    print(f"{Fore.YELLOW}[WARNING]:{Fore.RESET} {msg}", end=end, flush=flush)
+
+
 # -------------------------------------------------------------------------- #
 
 if __name__ == "__main__":
     cached_title = ""
 
     # Parse arguments
-    if len(sys.argv) <= 1:
-        print_usage_and_die()
-    parse_cmd_line_flags()
-    files = sys.argv[1:]
+    files = parse_cmd_line()
     total_files = len(files)
+    if total_files <= 0:
+        print_error("No files provided", die=False)
+        print_usage_and_die()
 
     # get destination folders
     movie_folder = os.environ.get("JELLYFIN_MOVIE_FOLDER")
@@ -407,13 +438,16 @@ if __name__ == "__main__":
             video_file.print_metadata()
 
         # move to destination folder
-        if video_file.move():
+        ret = video_file.move()
+        if ret == 0:
             if check_shallow:
                 print()
             else:
                 print(f"\t{Fore.GREEN}Files sucessfully veryfied!{Fore.RESET}")
-        else:
-            print_error("Source and destination files differ. Continuing with next file!")
+        elif ret == -1:
+            print_error(
+                "Source and destination files differ. Continuing with next file!"
+            )
             continue
 
         video_file.update_nfo()
