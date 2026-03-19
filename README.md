@@ -14,8 +14,8 @@ for file naming
     - Special Cuts: e.g. `The_Lord_of_the_Rings_-_The_Return_of_the_King (2004) [tmdbid-122] - Extended Cut.mkv`
 - TV Shows: e.g. `S01E01.mkv` (Selection of TV Show with fzf unless previously cached)
 - Extras:
-    - for movie-extras: e.g. `extras-Making of Oppenheimer` (Selection of Movie with fzf unless previously cached)
-    - for tv-show-extras: e.g. `extras-s06-Inside Episode 13 - Saul Gone` (Selection of TV Show with fzf unless previously cached)
+    - for movie-extras: e.g. `extras-Making of Oppenheimer.mp4` (Selection of Movie with fzf unless previously cached)
+    - for tv-show-extras: e.g. `extras-s06-Inside Episode 13 - Saul Gone.mp4` (Selection of TV Show with fzf unless previously cached)
 
 ## Additional Features:
 - removal of any `.ignore` files in the target directories
