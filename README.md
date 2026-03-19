@@ -20,7 +20,7 @@ for file naming
 ## Additional Features:
 - removal of any `.ignore` files in the target directories
 - removal of already present `.trickplay` folders to let jellyfin automatically refresh those
-- updating of `<dateadded>` metadata field, to let jellyfin know, this content is new
+- updating of `<dateadded>` metadata field, to let jellyfin know, this content is new (only works when the metadata is in the same folder as `.nfo` file)
 - beautiful output with progress bars, etc.
 
 ## Installation:
