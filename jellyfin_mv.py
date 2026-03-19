@@ -33,7 +33,6 @@ current_file = -1
 
 
 def set_stdin_echo(enabled):
-    # TODO: Make easier to use. Put try catch here
     if not sys.stdin.isatty():
         return None
 
