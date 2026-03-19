@@ -474,7 +474,7 @@ if __name__ == "__main__":
                 idx = title_ext.rfind(".")
                 title = title_ext[:idx]
                 if video_file.is_special_cut:
-                    title = re.sub(r"\s-\s.*?\sCut", "", title, flags=re.IGNORECASE)
+                    title = re.sub(r"\s-\s.*?\sCut$", "", title, flags=re.IGNORECASE)
                 cached_title = video_file.title = title
             else:
                 cached_title = video_file.title = video_file.query_title(dest_folder)
