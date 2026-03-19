@@ -5,6 +5,7 @@ This module provides functionality for moving Video Files to specified Destinati
 accordance with Jellyfin Folder Structure Conventions.
 """
 
+import datetime
 import filecmp
 import os
 import re
@@ -248,6 +249,7 @@ class MediaFile:
                 spinner = ["   ", ".  ", ".. ", "..."]
                 frame = 0
                 while t.is_alive():
+                    # TODO: Move one line up
                     print(
                         f"\tVerifying files{spinner[frame]}",
                         end="\r",
@@ -287,11 +289,27 @@ class MediaFile:
         nfo_file = (
             os.path.splitext(self.dest_file)[0] + ".nfo"
             if self.is_series or self.is_extra
-            else "movie.nfo"
+            else os.path.join(self.dest_dir, "movie.nfo")
         )
         if os.path.isfile(nfo_file):
-            # TODO: update <dateadded>
-            pass
+            lines = []
+            with open(nfo_file, "r") as f:
+                lines = f.readlines()
+
+            with open(nfo_file, "w") as f:
+                for line in lines:
+                    if "<dateadded>" in line:
+                        current_time = str(
+                            datetime.datetime.now(datetime.timezone.utc)
+                        ).split(".")[0]
+                        line = re.sub(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", current_time, line)
+                        f.write(line)
+                        print_info(
+                            f'{Fore.MAGENTA}<dateadded>{Fore.RESET} in {Fore.MAGENTA}"{os.path.basename(nfo_file)}"{Fore.RESET} '
+                            f'updated to {Fore.MAGENTA}"{current_time}"{Fore.RESET}'
+                        )
+                    else:
+                        f.write(line)
 
     def handle_special_cuts(self):
         # TODO: handle Extended/Cinematic Cuts
@@ -360,7 +378,9 @@ def print_help():
         f"\t{Fore.CYAN}-t{Fore.RESET}\tkeep FILE.trickplay\n"
         f"\t{Fore.CYAN}-d{Fore.RESET}\tpreserve <dateadded> in movie/episode metadata\n"
     )
-    print(f"Full documentation available at: {Fore.MAGENTA}<https://github.com/jakob-greger/jellyfin-mv>{Fore.RESET}")
+    print(
+        f"Full documentation available at: {Fore.MAGENTA}<https://github.com/jakob-greger/jellyfin-mv>{Fore.RESET}"
+    )
 
 
 def parse_cmd_line():
@@ -468,7 +488,7 @@ if __name__ == "__main__":
             if check_shallow:
                 print()
             else:
-                print(f"\t{Fore.GREEN}Files sucessfully veryfied!{Fore.RESET}")
+                print(f"\t{Fore.GREEN}Files verified!{Fore.RESET}")
         elif ret == -1:
             print_error(
                 "Source and destination files differ. Continuing with next file!"
