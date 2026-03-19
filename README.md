@@ -2,6 +2,7 @@
 
 ## What is it for?
 Easilly transfer media files (Movies and TV Shows) to their dedicated folders for jellyfin.
+
 See also:
 [jellyfin.org/docs/general/server/media/movies](https://jellyfin.org/docs/general/server/media/movies)
 and
@@ -20,6 +21,7 @@ for file naming
 - removal of any `.ignore` files in the target directories
 - removal of already present `.trickplay` folders to let jellyfin automatically refresh those
 - updating of `<dateadded>` metadata field, to let jellyfin know, this content is new
+- beautiful output with progress bars, etc.
 
 ## Installation:
 ### Requirements:
@@ -36,7 +38,7 @@ ln -rs jellyfin_mv.py ~/.local/bin/jfmv
 
 ## Usage:
 ```
-$ jfmv [OPTION]... FILE...
+jfmv [OPTION]... FILE...
 ```
 
 Note: Since the TV-Show or movie title you specify using fzf will be cached, you should handle different shows or extras belonging to different movies seperately.
@@ -52,8 +54,8 @@ Note: Since the TV-Show or movie title you specify using fzf will be cached, you
 
 ### Example:
 ```
-$ jfmv "Star_Trek_IV_-_The_Voyage_Home (1986) [tmdbid-168].mkv" "extras-Making of.mkv" "extras-interview.mkv" "extras-VFX.mkv"
-$ jfmv "S04E*.mkv" "extras-s04-Gag Reel.mkv"
-$ jfmv "Blade Runner.mkv" "Blade Runner 2049.mkv"
+jfmv "Star_Trek_IV_-_The_Voyage_Home (1986) [tmdbid-168].mkv" "extras-Making of.mkv" "extras-interview.mkv" "extras-VFX.mkv"
+jfmv "S04E*.mkv" "extras-s04-Gag Reel.mkv"
+jfmv "Blade Runner.mkv" "Blade Runner 2049.mkv"
 ```
 
