@@ -21,7 +21,7 @@ from colorama import Fore
 CACHE_FILE = "/tmp/jf-mv_last-selected.txt"
 
 # cmd line flags
-is_verbose = False
+only_metadata = False
 copy_source = False
 check_shallow = False
 keep_trickplay = False
@@ -307,9 +307,12 @@ class MediaFile:
                             f.write(line)
 
     def print_metadata(self):
-        # TODO: update for new attributes
-        print_info('Fileinformation for "{}"'.format(self.basename))
+        print_info(f'Fileinformation for {Fore.MAGENTA}"{self.basename}"{Fore.RESET}')
         print(f"\t- Title: {self.title}")
+
+        if self.is_special_cut:
+            print("\t- Special Cut")
+
         if self.is_extra:
             if self.is_series:
                 print("\t- series-extra")
@@ -320,6 +323,8 @@ class MediaFile:
             print(f"\t- Season {self.season}")
             if not self.is_extra:
                 print(f"\t- Episode {self.episode}")
+
+        print(f'\t- target library {Fore.MAGENTA}"{self.target}"{Fore.RESET}')
 
 
 def parse_file_name(file_name):
@@ -350,7 +355,7 @@ def parse_file_name(file_name):
 
     # is special cut
     if not res.is_extra and not res.is_series:
-        if re.search(r'\s-\s.*?\sCut(?=\.[^.]+$)', base_name, flags=re.IGNORECASE):
+        if re.search(r"\s-\s.*?\sCut(?=\.[^.]+$)", base_name, flags=re.IGNORECASE):
             res.is_special_cut = True
 
     return res
@@ -369,13 +374,13 @@ def print_help():
     )
     print(
         f"{Fore.YELLOW}Options:{Fore.RESET}\n"
-        f"\t{Fore.CYAN}-h{Fore.RESET}\tview help\n"
-        f"\t{Fore.CYAN}-v{Fore.RESET}\tverbose\n"
         f"\t{Fore.CYAN}-c{Fore.RESET}\tkeep source file\n"
+        f"\t{Fore.CYAN}-d{Fore.RESET}\tpreserve <dateadded> in movie/episode metadata\n"
+        f"\t{Fore.CYAN}-h{Fore.RESET}\tview help\n"
+        f"\t{Fore.CYAN}-i{Fore.RESET}\tpreserve .ignore files\n"
+        f"\t{Fore.CYAN}-m{Fore.RESET}\tonly print metadata without writing a file\n"
         f"\t{Fore.CYAN}-s{Fore.RESET}\tshallow file verification\n"
         f"\t{Fore.CYAN}-t{Fore.RESET}\tkeep FILE.trickplay\n"
-        f"\t{Fore.CYAN}-d{Fore.RESET}\tpreserve <dateadded> in movie/episode metadata\n"
-        f"\t{Fore.CYAN}-i{Fore.RESET}\tpreserve .ignore files\n"
     )
     print(
         f"Full documentation available at: {Fore.MAGENTA}<https://github.com/jakob-greger/jellyfin-mv>{Fore.RESET}"
@@ -383,7 +388,7 @@ def print_help():
 
 
 def parse_cmd_line():
-    global is_verbose, copy_source, check_shallow, keep_trickplay, preserve_dateadded, preserve_ignore
+    global only_metadata, copy_source, check_shallow, keep_trickplay, preserve_dateadded, preserve_ignore
     res = []
     for arg in sys.argv:
         # ignore program name
@@ -397,8 +402,8 @@ def parse_cmd_line():
                     case "h":
                         print_help()
                         sys.exit(0)
-                    case "v":
-                        is_verbose = True
+                    case "m":
+                        only_metadata = True
                     case "c":
                         copy_source = True
                     case "s":
@@ -480,8 +485,9 @@ if __name__ == "__main__":
                 cached_title = video_file.title = video_file.query_title(dest_folder)
 
         # print info
-        if is_verbose:
+        if only_metadata:
             video_file.print_metadata()
+            continue
 
         # move to destination folder
         ret = video_file.move()
