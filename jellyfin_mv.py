@@ -13,7 +13,6 @@ import shutil
 import subprocess
 import sys
 import termios
-import textwrap
 import time
 from threading import Thread
 
@@ -30,17 +29,6 @@ preserve_dateadded = False
 
 total_files = -1
 current_file = -1
-
-
-def wrap_with_tabs(text, width, continuation_tabs=2):
-    # FIXME: Doesnt always work exactly as intended
-    # TODO: Refactor to print_wrapped(text)
-    if len(text) <= width:
-        return text
-    wrapped = textwrap.wrap(
-        text, width=width, break_long_words=True, break_on_hyphens=False
-    )
-    return ("\n" + "\t" * continuation_tabs).join(wrapped)
 
 
 def set_stdin_echo(enabled):
@@ -146,22 +134,12 @@ class MediaFile:
 
         # copy file to target
         copied = 0
+        final_progress_line = ""
         chunk_size = 2**20  # 1MiB
         bar_width = 30
         txt_move_or_copy = "copying" if copy_source else "moving"
-        term_width = shutil.get_terminal_size(fallback=(120, 24)).columns
-        src_display = wrap_with_tabs(
-            self.path,
-            width=max(20, term_width - len(txt_move_or_copy) - 8),
-            continuation_tabs=2,
-        )
-        dst_display = wrap_with_tabs(
-            self.dest_file,
-            width=max(20, term_width - 8),
-            continuation_tabs=2,
-        )
         print_info(
-            f'{txt_move_or_copy}\t{Fore.MAGENTA}"{src_display}"{Fore.RESET}\n\tto\t{Fore.MAGENTA}"{dst_display}"{Fore.RESET}'
+            f'{txt_move_or_copy}\t{Fore.MAGENTA}"{self.path}"{Fore.RESET}\n\tto\t{Fore.MAGENTA}"{self.dest_file}"{Fore.RESET}'
         )
         t0 = time.time()
         old_stdin_attrs = None
@@ -199,6 +177,7 @@ class MediaFile:
                         else ""
                     )
                     line = (
+                        "\t"
                         f"{txt_total_files}"
                         f"{color}"
                         f"[{bar}] {progress * 100:.2f}%"
@@ -208,7 +187,8 @@ class MediaFile:
                         f"{" " * spacing}"
                         f"{speed_mib_s:5.1f} MiB/s"
                     )
-                    print(f"\t{line}", end="\r", flush=True)
+                    final_progress_line = line
+                    print(line, end="\r", flush=True)
 
                     # artificial do ... while to have the 100% shown in GREEN
                     if stop:
@@ -244,14 +224,12 @@ class MediaFile:
                 old_stdin_attrs = None
             t = Thread(target=check_files)
             t.start()
-            print()
             try:
                 spinner = ["   ", ".  ", ".. ", "..."]
                 frame = 0
                 while t.is_alive():
-                    # TODO: Move one line up
                     print(
-                        f"\tVerifying files{spinner[frame]}",
+                        f"{final_progress_line}{" " * spacing}Verifying files{spinner[frame]}",
                         end="\r",
                         flush=True,
                     )
@@ -270,6 +248,10 @@ class MediaFile:
                     termios.tcflush(fd, termios.TCIFLUSH)
 
         if sucess:
+            status = f"{final_progress_line}"
+            if not check_shallow:
+                status += f"{" " * spacing}{Fore.GREEN}Files verified! {Fore.RESET}"
+            print(status)
             return 0
         else:
             return -1
@@ -302,7 +284,9 @@ class MediaFile:
                         current_time = str(
                             datetime.datetime.now(datetime.timezone.utc)
                         ).split(".")[0]
-                        line = re.sub(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", current_time, line)
+                        line = re.sub(
+                            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", current_time, line
+                        )
                         f.write(line)
                         print_info(
                             f'{Fore.MAGENTA}<dateadded>{Fore.RESET} in {Fore.MAGENTA}"{os.path.basename(nfo_file)}"{Fore.RESET} '
@@ -485,10 +469,7 @@ if __name__ == "__main__":
         # move to destination folder
         ret = video_file.move()
         if ret == 0:
-            if check_shallow:
-                print()
-            else:
-                print(f"\t{Fore.GREEN}Files verified!{Fore.RESET}")
+            pass
         elif ret == -1:
             print_error(
                 "Source and destination files differ. Continuing with next file!"
