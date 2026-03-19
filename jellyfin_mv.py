@@ -15,6 +15,7 @@ import termios
 import textwrap
 import time
 
+from threading import Thread
 from colorama import Fore
 
 CACHE_FILE = "/tmp/jf-mv_last-selected.txt"
@@ -38,6 +39,7 @@ def wrap_with_tabs(text, width, continuation_tabs=2):
 
 
 def set_stdin_echo(enabled):
+    # TODO: Make easier to use. Put try catch here
     if not sys.stdin.isatty():
         return None
 
@@ -154,7 +156,6 @@ class MediaFile:
         t0 = time.time()
         old_stdin_attrs = None
         try:
-            # disable stdin echo
             old_stdin_attrs = set_stdin_echo(False)
         except termios.error:
             old_stdin_attrs = None
@@ -214,25 +215,52 @@ class MediaFile:
             finally:
                 # reset terminal attributes for stdin echo
                 if old_stdin_attrs is not None:
-                    termios.tcsetattr(
-                        sys.stdin.fileno(), termios.TCSADRAIN, old_stdin_attrs
-                    )
+                    fd = sys.stdin.fileno()
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_stdin_attrs)
+                    termios.tcflush(fd, termios.TCIFLUSH)
 
         # copy file metadata
         shutil.copystat(self.path, self.dest_file)
 
         # remove src file if successfull
         sucess = True
-        if filecmp.cmp(self.path, self.dest_file, shallow=check_shallow):
-            if not copy_source:
-                os.remove(self.path)
+        def check_files():
+            nonlocal sucess
+            sucess = filecmp.cmp(self.path, self.dest_file, shallow=False)
+
+        if check_shallow:
+            sucess = filecmp.cmp(self.path, self.dest_file, shallow=True)
         else:
-            print_error(
-                "Destination file and source file are different. Keeping source file and continuing with the next file",
-                die=False,
-            )
-            sucess = False
-        print()
+            try:
+                old_stdin_attrs = set_stdin_echo(False)
+            except termios.error:
+                old_stdin_attrs = None
+            t = Thread(target=check_files)
+            t.start()
+            print()
+            try:
+                spinner = ["   ", ".  ", ".. ", "..."]
+                frame = 0
+                while t.is_alive():
+                    print(
+                        f"\tVerifying files{spinner[frame]}",
+                        end="\r",
+                        flush=True,
+                    )
+                    frame = (frame + 1) % len(spinner)
+                    time.sleep(0.25)
+                t.join()
+            except KeyboardInterrupt:
+                # catch keyboard Interrupts
+                print()
+                print_error("Keyboard Interrupt")
+            finally:
+                # reset terminal attributes for stdin echo
+                if old_stdin_attrs is not None:
+                    fd = sys.stdin.fileno()
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_stdin_attrs)
+                    termios.tcflush(fd, termios.TCIFLUSH)
+
         return sucess
 
     def cleanup_trickplay(self):
@@ -379,7 +407,14 @@ if __name__ == "__main__":
             video_file.print_metadata()
 
         # move to destination folder
-        if not video_file.move():
+        if video_file.move():
+            if check_shallow:
+                print()
+            else:
+                print(f"\t{Fore.GREEN}Files sucessfully veryfied!{Fore.RESET}")
+        else:
+            print_error("Source and destination files differ. Continuing with next file!")
             continue
+
         video_file.update_nfo()
         video_file.cleanup_trickplay()
