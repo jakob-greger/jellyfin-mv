@@ -26,6 +26,7 @@ copy_source = False
 check_shallow = False
 keep_trickplay = False
 preserve_dateadded = False
+preserve_ignore = True
 
 total_files = -1
 current_file = -1
@@ -53,6 +54,7 @@ class MediaFile:
         self.basename = os.path.basename(file_name)
         self.is_series = False
         self.is_extra = False
+        self.is_special_cut = False
         self.season = -1
         self.episode = -1
         self.title = ""
@@ -98,6 +100,9 @@ class MediaFile:
 
     def move(self):
         def rem_ignore(path):
+            global preserve_ignore
+            if preserve_ignore:
+                return
             file = os.path.join(path, ".ignore")
             if os.path.isfile(file):
                 os.remove(file)
@@ -215,7 +220,6 @@ class MediaFile:
             nonlocal sucess
             sucess = filecmp.cmp(self.path, self.dest_file, shallow=False)
 
-
         if check_shallow:
             sucess = filecmp.cmp(self.path, self.dest_file, shallow=True)
         else:
@@ -267,39 +271,43 @@ class MediaFile:
     def update_nfo(self):
         if preserve_dateadded:
             return
-        # TODO: Check if multiple Cuts of Movie
-        nfo_file = (
-            os.path.splitext(self.dest_file)[0] + ".nfo"
-            if self.is_series or self.is_extra
-            else os.path.join(self.dest_dir, "movie.nfo")
-        )
-        if os.path.isfile(nfo_file):
-            lines = []
-            with open(nfo_file, "r") as f:
-                lines = f.readlines()
+        nfo_files = [
+            (
+                os.path.splitext(self.dest_file)[0] + ".nfo"
+                if self.is_series or self.is_extra
+                else os.path.join(self.dest_dir, "movie.nfo")
+            )
+        ]
+        if self.is_special_cut:
+            nfo_files.append(os.path.splitext(self.dest_file)[0] + ".nfo")
 
-            with open(nfo_file, "w") as f:
-                for line in lines:
-                    if "<dateadded>" in line:
-                        current_time = str(
-                            datetime.datetime.now(datetime.timezone.utc)
-                        ).split(".")[0]
-                        line = re.sub(
-                            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", current_time, line
-                        )
-                        f.write(line)
-                        print_info(
-                            f'{Fore.MAGENTA}<dateadded>{Fore.RESET} in {Fore.MAGENTA}"{os.path.basename(nfo_file)}"{Fore.RESET} '
-                            f'updated to {Fore.MAGENTA}"{current_time}"{Fore.RESET}'
-                        )
-                    else:
-                        f.write(line)
+        for nfo_file in nfo_files:
+            if os.path.isfile(nfo_file):
+                lines = []
+                with open(nfo_file, "r") as f:
+                    lines = f.readlines()
 
-    def handle_special_cuts(self):
-        # TODO: handle Extended/Cinematic Cuts
-        pass
+                with open(nfo_file, "w") as f:
+                    for line in lines:
+                        if "<dateadded>" in line:
+                            current_time = str(
+                                datetime.datetime.now(datetime.timezone.utc)
+                            ).split(".")[0]
+                            line = re.sub(
+                                r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}",
+                                current_time,
+                                line,
+                            )
+                            f.write(line)
+                            print_info(
+                                f'{Fore.MAGENTA}<dateadded>{Fore.RESET} in {Fore.MAGENTA}"{os.path.basename(nfo_file)}"{Fore.RESET} '
+                                f'updated to {Fore.MAGENTA}"{current_time}"{Fore.RESET}'
+                            )
+                        else:
+                            f.write(line)
 
     def print_metadata(self):
+        # TODO: update for new attributes
         print_info('Fileinformation for "{}"'.format(self.basename))
         print(f"\t- Title: {self.title}")
         if self.is_extra:
@@ -320,6 +328,7 @@ def parse_file_name(file_name):
     base_name = re.split("/", file_name)[-1]
 
     # is extra
+    # TODO: check for extras type (e.g. trailer, special feature, etc.)
     if re.search(r"^extras-*", base_name, flags=re.IGNORECASE):
         res.is_extra = True
         base_name = re.split(r"-", base_name, maxsplit=1)[1]
@@ -338,6 +347,11 @@ def parse_file_name(file_name):
         if match:
             res.season = int(match.group(1))
             res.episode = int(match.group(2))
+
+    # is special cut
+    if not res.is_extra and not res.is_series:
+        if re.search(r'\s-\s.*?\sCut(?=\.[^.]+$)', base_name, flags=re.IGNORECASE):
+            res.is_special_cut = True
 
     return res
 
@@ -361,6 +375,7 @@ def print_help():
         f"\t{Fore.CYAN}-s{Fore.RESET}\tshallow file verification\n"
         f"\t{Fore.CYAN}-t{Fore.RESET}\tkeep FILE.trickplay\n"
         f"\t{Fore.CYAN}-d{Fore.RESET}\tpreserve <dateadded> in movie/episode metadata\n"
+        f"\t{Fore.CYAN}-i{Fore.RESET}\tpreserve .ignore files\n"
     )
     print(
         f"Full documentation available at: {Fore.MAGENTA}<https://github.com/jakob-greger/jellyfin-mv>{Fore.RESET}"
@@ -368,7 +383,7 @@ def print_help():
 
 
 def parse_cmd_line():
-    global is_verbose, copy_source, check_shallow, keep_trickplay, preserve_dateadded
+    global is_verbose, copy_source, check_shallow, keep_trickplay, preserve_dateadded, preserve_ignore
     res = []
     for arg in sys.argv:
         # ignore program name
@@ -392,6 +407,8 @@ def parse_cmd_line():
                         keep_trickplay = True
                     case "d":
                         preserve_dateadded = True
+                    case "i":
+                        preserve_ignore = True
                     case "-":
                         continue
                     case _:
@@ -455,12 +472,12 @@ if __name__ == "__main__":
             if not video_file.is_extra and not video_file.is_series:
                 title_ext = video_file.path.split("/")[-1]
                 idx = title_ext.rfind(".")
-                cached_title = video_file.title = title_ext[:idx]
+                title = title_ext[:idx]
+                if video_file.is_special_cut:
+                    title = re.sub(r"\s-\s.*?\sCut", "", title, flags=re.IGNORECASE)
+                cached_title = video_file.title = title
             else:
                 cached_title = video_file.title = video_file.query_title(dest_folder)
-
-        # Extended Cut and Cinematic Cut should be in the same movie folder
-        video_file.handle_special_cuts()
 
         # print info
         if is_verbose:
