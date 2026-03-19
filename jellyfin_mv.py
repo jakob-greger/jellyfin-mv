@@ -215,6 +215,7 @@ class MediaFile:
             nonlocal sucess
             sucess = filecmp.cmp(self.path, self.dest_file, shallow=False)
 
+
         if check_shallow:
             sucess = filecmp.cmp(self.path, self.dest_file, shallow=True)
         else:
@@ -229,7 +230,7 @@ class MediaFile:
                 frame = 0
                 while t.is_alive():
                     print(
-                        f"{final_progress_line}{" " * spacing}Verifying files {spinner[frame]}",
+                        f"{final_progress_line}{" " * spacing}{spinner[frame]} Verifying files",
                         end="\r",
                         flush=True,
                     )
@@ -249,7 +250,7 @@ class MediaFile:
 
         if sucess:
             print(
-                f"{final_progress_line}{" " * spacing}{Fore.GREEN}Files verified!{Fore.RESET}"
+                f"{final_progress_line}{" " * spacing}{Fore.GREEN}Files verified!{Fore.RESET}  "
             )
             return 0
         else:
