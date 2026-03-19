@@ -225,16 +225,16 @@ class MediaFile:
             t = Thread(target=check_files)
             t.start()
             try:
-                spinner = ["   ", ".  ", ".. ", "..."]
+                spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
                 frame = 0
                 while t.is_alive():
                     print(
-                        f"{final_progress_line}{" " * spacing}Verifying files{spinner[frame]}",
+                        f"{final_progress_line}{" " * spacing}Verifying files {spinner[frame]}",
                         end="\r",
                         flush=True,
                     )
                     frame = (frame + 1) % len(spinner)
-                    time.sleep(0.25)
+                    time.sleep(0.08)
                 t.join()
             except KeyboardInterrupt:
                 # catch keyboard Interrupts
@@ -248,10 +248,9 @@ class MediaFile:
                     termios.tcflush(fd, termios.TCIFLUSH)
 
         if sucess:
-            status = f"{final_progress_line}"
-            if not check_shallow:
-                status += f"{" " * spacing}{Fore.GREEN}Files verified! {Fore.RESET}"
-            print(status)
+            print(
+                f"{final_progress_line}{" " * spacing}{Fore.GREEN}Files verified!{Fore.RESET}"
+            )
             return 0
         else:
             return -1
