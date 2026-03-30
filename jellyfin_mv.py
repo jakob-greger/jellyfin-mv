@@ -31,6 +31,8 @@ preserve_ignore = True
 total_files = -1
 current_file = -1
 
+SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
 
 def set_stdin_echo(enabled):
     if not sys.stdin.isatty():
@@ -98,6 +100,8 @@ class MediaFile:
         return selected_title
 
     def move(self):
+        global SPINNER
+
         def rem_ignore(path):
             global preserve_ignore
             if preserve_ignore:
@@ -141,76 +145,108 @@ class MediaFile:
         final_progress_line = ""
         chunk_size = 2**20  # 1MiB
         bar_width = 30
+        spacing = 4
         txt_move_or_copy = "copying" if copy_source else "moving"
         print_info(
             f'{txt_move_or_copy}\t{Fore.MAGENTA}"{self.path}"{Fore.RESET}\n\tto\t{Fore.MAGENTA}"{self.dest_file}"{Fore.RESET}'
         )
         t0 = time.time()
-        old_stdin_attrs = None
+        src = open(self.path, "rb")
+        dst = open(self.dest_file, "wb")
         try:
-            old_stdin_attrs = set_stdin_echo(False)
-        except termios.error:
-            old_stdin_attrs = None
-        with open(self.path, "rb") as src, open(self.dest_file, "wb") as dst:
-            try:
-                while True:
-                    stop = False
+            while True:
+                stop = False
 
-                    # write chunk
-                    chunk = src.read(chunk_size)
-                    if not chunk:
-                        stop = True
-                    dst.write(chunk)
-                    copied += len(chunk)
+                # write chunk
+                chunk = src.read(chunk_size)
+                if not chunk:
+                    stop = True
+                dst.write(chunk)
+                copied += len(chunk)
 
-                    # progress bar
-                    progress = copied / src_size
-                    filled = int(progress * bar_width)
-                    bar = "=" * filled + " " * (bar_width - filled)
+                # progress bar
+                progress = copied / src_size
+                filled = int(progress * bar_width)
+                bar = "=" * filled + " " * (bar_width - filled)
 
-                    # speed
-                    elapsed = max(time.time() - t0, 1e-9)
-                    speed_mib_s = (copied / 2**20) / elapsed
+                # speed
+                elapsed = max(time.time() - t0, 1e-9)
+                speed_mib_s = (copied / 2**20) / elapsed
 
-                    # output styling
-                    spacing = 4
-                    color = Fore.GREEN if stop else Fore.RESET
-                    txt_total_files = (
-                        f"{Fore.CYAN}[{current_file}/{total_files}] "
-                        if total_files > 1
-                        else ""
-                    )
-                    line = (
-                        "\t"
-                        f"{txt_total_files}"
-                        f"{color}"
-                        f"[{bar}] {progress * 100:.2f}%"
-                        f"{" " * spacing}"
-                        f"{Fore.RESET}"
-                        f"{(copied/2**20):,.0f} / {(src_size/2**20):,.0f} MiB"
-                        f"{" " * spacing}"
-                        f"{speed_mib_s:5.1f} MiB/s"
-                    )
-                    final_progress_line = line
-                    print(line, end="\r", flush=True)
+                # output styling
+                color = Fore.GREEN if stop else Fore.RESET
+                txt_total_files = (
+                    f"{Fore.CYAN}[{current_file}/{total_files}] "
+                    if total_files > 1
+                    else ""
+                )
+                line = (
+                    "\t"
+                    f"{txt_total_files}"
+                    f"{color}"
+                    f"[{bar}] {progress * 100:.2f}%"
+                    f"{" " * spacing}"
+                    f"{Fore.RESET}"
+                    f"{(copied/2**20):,.0f} / {(src_size/2**20):,.0f} MiB"
+                    f"{" " * spacing}"
+                    f"{speed_mib_s:5.1f} MiB/s"
+                )
+                final_progress_line = line
+                print(line, end="\r", flush=True)
 
-                    # artificial do ... while to have the 100% shown in GREEN
-                    if stop:
-                        break
+                # artificial do ... while to have the 100% shown in GREEN
+                if stop:
+                    break
+        finally:
+            close_error = None
 
-            except KeyboardInterrupt:
-                # catch keyboard Interrupts
-                print()
-                print_error("Keyboard Interrupt")
-            finally:
-                # reset terminal attributes for stdin echo
-                if old_stdin_attrs is not None:
-                    fd = sys.stdin.fileno()
-                    termios.tcsetattr(fd, termios.TCSADRAIN, old_stdin_attrs)
-                    termios.tcflush(fd, termios.TCIFLUSH)
+            def close_files():
+                nonlocal close_error
+                try:
+                    dst.close()
+                    src.close()
+                except OSError as err:
+                    close_error = err
+
+            t_close = Thread(target=close_files)
+            t_close.start()
+            frame = 0
+            while t_close.is_alive():
+                print(
+                    f"{final_progress_line}{' ' * spacing}{SPINNER[frame]} Finalizing write",
+                    end="\r",
+                    flush=True,
+                )
+                frame = (frame + 1) % len(SPINNER)
+                time.sleep(0.08)
+            t_close.join()
+            if close_error is not None:
+                raise close_error
 
         # copy file metadata
-        shutil.copystat(self.path, self.dest_file)
+        copystat_error = None
+
+        def copy_metadata():
+            nonlocal copystat_error
+            try:
+                shutil.copystat(self.path, self.dest_file)
+            except OSError as err:
+                copystat_error = err
+
+        t_copystat = Thread(target=copy_metadata)
+        t_copystat.start()
+        frame = 0
+        while t_copystat.is_alive():
+            print(
+                f"{final_progress_line}{' ' * spacing}{SPINNER[frame]} Copying file metadata",
+                end="\r",
+                flush=True,
+            )
+            frame = (frame + 1) % len(SPINNER)
+            time.sleep(0.08)
+        t_copystat.join()
+        if copystat_error is not None:
+            raise copystat_error
 
         # remove src file if successfull
         sucess = True
@@ -222,40 +258,25 @@ class MediaFile:
         if check_shallow:
             sucess = filecmp.cmp(self.path, self.dest_file, shallow=True)
         else:
-            try:
-                old_stdin_attrs = set_stdin_echo(False)
-            except termios.error:
-                old_stdin_attrs = None
             t = Thread(target=check_files)
             t.start()
-            try:
-                spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-                frame = 0
-                while t.is_alive():
-                    print(
-                        f"{final_progress_line}{" " * spacing}{spinner[frame]} Verifying files",
-                        end="\r",
-                        flush=True,
-                    )
-                    frame = (frame + 1) % len(spinner)
-                    time.sleep(0.08)
-                t.join()
-            except KeyboardInterrupt:
-                # catch keyboard Interrupts
-                print()
-                print_error("Keyboard Interrupt")
-            finally:
-                # reset terminal attributes for stdin echo
-                if old_stdin_attrs is not None:
-                    fd = sys.stdin.fileno()
-                    termios.tcsetattr(fd, termios.TCSADRAIN, old_stdin_attrs)
-                    termios.tcflush(fd, termios.TCIFLUSH)
+            frame = 0
+            while t.is_alive():
+                print(
+                    f"{final_progress_line}{" " * spacing}{SPINNER[frame]} Verifying files      ",
+                    end="\r",
+                    flush=True,
+                )
+                frame = (frame + 1) % len(SPINNER)
+                time.sleep(0.08)
+            t.join()
 
         if sucess:
             print(
                 f"{final_progress_line}{" " * spacing}{Fore.GREEN}Files verified!{Fore.RESET}  "
             )
-            os.remove(self.path)
+            if not copy_source:
+                os.remove(self.path)
             return 0
         else:
             return -1
@@ -444,61 +465,81 @@ def print_warning(msg, end="\n", flush=False):
 
 if __name__ == "__main__":
     cached_title = ""
+    old_stdin_attrs = None
 
-    # Parse arguments
-    files = parse_cmd_line()
-    total_files = len(files)
-    if total_files <= 0:
-        print_error("No files provided", die=False)
-        print_help()
-        sys.exit(1)
+    try:
+        old_stdin_attrs = set_stdin_echo(False)
+    except termios.error:
+        old_stdin_attrs = None
 
-    # get destination folders
-    movie_folder = os.environ.get("JELLYFIN_MOVIE_FOLDER")
-    series_folder = os.environ.get("JELLYFIN_SERIES_FOLDER")
+    try:
+        # Parse arguments
+        files = parse_cmd_line()
+        total_files = len(files)
+        if total_files <= 0:
+            print_error("No files provided", die=False)
+            print_help()
+            sys.exit(1)
 
-    # Process files
-    for idx, file in enumerate(files):
-        current_file = idx + 1
+        # get destination folders
+        movie_folder = os.environ.get("JELLYFIN_MOVIE_FOLDER")
+        series_folder = os.environ.get("JELLYFIN_SERIES_FOLDER")
 
-        video_file = parse_file_name(file)
+        # Process files
+        for idx, file in enumerate(files):
+            current_file = idx + 1
 
-        # check destination folder
-        dest_folder = series_folder if video_file.is_series else movie_folder
-        if not dest_folder:
-            print_error("No destination folder set")
-        else:
-            video_file.target = dest_folder
+            video_file = parse_file_name(file)
 
-        # extract title and cache for all following episodes or extras
-        if cached_title and (video_file.is_series or video_file.is_extra):
-            video_file.title = cached_title
-        else:
-            if not video_file.is_extra and not video_file.is_series:
-                title_ext = video_file.path.split("/")[-1]
-                idx = title_ext.rfind(".")
-                title = title_ext[:idx]
-                if video_file.is_special_cut:
-                    title = re.sub(r"\s-\s.*?\sCut$", "", title, flags=re.IGNORECASE)
-                cached_title = video_file.title = title
+            # check destination folder
+            dest_folder = series_folder if video_file.is_series else movie_folder
+            if not dest_folder:
+                print_error("No destination folder set")
             else:
-                cached_title = video_file.title = video_file.query_title(dest_folder)
+                video_file.target = dest_folder
 
-        # print info
-        if only_metadata:
-            video_file.print_metadata()
-            continue
+            # extract title and cache for all following episodes or extras
+            if cached_title and (video_file.is_series or video_file.is_extra):
+                video_file.title = cached_title
+            else:
+                if not video_file.is_extra and not video_file.is_series:
+                    title_ext = video_file.path.split("/")[-1]
+                    idx = title_ext.rfind(".")
+                    title = title_ext[:idx]
+                    if video_file.is_special_cut:
+                        title = re.sub(
+                            r"\s-\s.*?\sCut$", "", title, flags=re.IGNORECASE
+                        )
+                    cached_title = video_file.title = title
+                else:
+                    cached_title = video_file.title = video_file.query_title(
+                        dest_folder
+                    )
 
-        # move to destination folder
-        ret = video_file.move()
-        if ret == 0:
-            pass
-        elif ret == -1:
-            print()
-            print_error(
-                "Source and destination files differ. Continuing with next file!", die=False
-            )
-            continue
+            # print info
+            if only_metadata:
+                video_file.print_metadata()
+                continue
 
-        video_file.update_nfo()
-        video_file.cleanup_trickplay()
+            # move to destination folder
+            ret = video_file.move()
+            if ret == 0:
+                pass
+            elif ret == -1:
+                print()
+                print_error(
+                    "Source and destination files differ. Continuing with next file!",
+                    die=False,
+                )
+                continue
+
+            video_file.update_nfo()
+            video_file.cleanup_trickplay()
+    except KeyboardInterrupt:
+        print()
+        print_error("Keyboard Interrupt")
+    finally:
+        if old_stdin_attrs is not None:
+            fd = sys.stdin.fileno()
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_stdin_attrs)
+            termios.tcflush(fd, termios.TCIFLUSH)
