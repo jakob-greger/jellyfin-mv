@@ -4,3 +4,6 @@ jellyfin_mv.sh
 # test folders
 Series/
 Movies/
+
+# pycache
+__pycache__/**
