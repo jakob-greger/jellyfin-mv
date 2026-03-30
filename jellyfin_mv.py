@@ -108,13 +108,13 @@ class MediaFile:
                 print_info(f'removed {Fore.MAGENTA}"{file}"')
 
         # create target folder if necessary
-        dest = f"{self.target}/{self.title}"
+        dest = os.path.join(self.target, self.title)
         rem_ignore(dest)
         if self.is_series:
-            dest += f"/Season {self.season}"
+            dest = os.path.join(dest, f"Season {self.season}")
             rem_ignore(dest)
         if self.is_extra:
-            dest += "/extras"
+            dest = os.path.join(dest, "extras")
             rem_ignore(dest)
         if not os.path.isdir(dest):
             print_info(f'creating folder {Fore.MAGENTA}"{dest}"')
@@ -255,6 +255,7 @@ class MediaFile:
             print(
                 f"{final_progress_line}{" " * spacing}{Fore.GREEN}Files verified!{Fore.RESET}  "
             )
+            os.remove(self.path)
             return 0
         else:
             return -1
@@ -493,8 +494,9 @@ if __name__ == "__main__":
         if ret == 0:
             pass
         elif ret == -1:
+            print()
             print_error(
-                "Source and destination files differ. Continuing with next file!"
+                "Source and destination files differ. Continuing with next file!", die=False
             )
             continue
 
